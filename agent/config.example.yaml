@@ -1,0 +1,4 @@
+port: 9100
+token: "your-secret-token-here"
+hostname: ""
+interval: 5
