@@ -1,31 +1,43 @@
-import { ServerConfig } from '../../types/server';
+import type { ServerConfig } from '../../types/server';
+import { useUiCopy } from '../../hooks/useUiCopy';
+import { getAdapterLabelKey } from '../../lib/serverLabels';
 
 interface ServerCardProps {
   server: ServerConfig;
   isActive: boolean;
   onClick: () => void;
+  compact?: boolean;
 }
 
-export default function ServerCard({ server, isActive, onClick }: ServerCardProps) {
+export default function ServerCard({ server, isActive, onClick, compact = false }: ServerCardProps) {
+  const { t } = useUiCopy();
+
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
-      className={`p-4 rounded-lg border cursor-pointer transition-colors ${
-        isActive
-          ? 'bg-blue-900/20 border-blue-500'
-          : 'bg-gray-800 border-gray-700 hover:border-gray-600'
+      className={`server-card group w-full rounded-[18px] border text-left transition duration-300 ${
+        compact ? 'is-compact px-3 py-2.5' : 'px-3.5 py-3'
+      } ${
+        isActive ? 'is-active' : ''
       }`}
     >
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="font-semibold text-white">{server.name}</h3>
-        <span
-          className={`w-2 h-2 rounded-full ${
-            server.enabled ? 'bg-green-500' : 'bg-gray-500'
-          }`}
-        />
+      <div className={`${compact ? 'mb-2' : 'mb-3'} flex items-start justify-between gap-3`}>
+        <div className="min-w-0">
+          {compact ? null : <p className="panel-label">{t('server_target_label')}</p>}
+          <h3 className={`server-card-title truncate ${compact ? '' : 'mt-1'}`}>{server.name}</h3>
+        </div>
+        <span className={`server-card-dot ${server.enabled ? 'is-online' : ''}`} />
       </div>
-      <p className="text-sm text-gray-400">{server.host}:{server.port}</p>
-      <p className="text-xs text-gray-500 mt-1">{server.adapter_type}</p>
-    </div>
+      <p className={`server-card-endpoint truncate ${compact ? 'text-[0.76rem]' : 'text-sm'}`}>
+        {server.host}:{server.port}
+      </p>
+      <div className={`server-card-meta ${compact ? 'mt-2' : 'mt-3'}`}>
+        <span className="truncate">{t(getAdapterLabelKey(server.adapter_type))}</span>
+        <span className={`server-card-status ${isActive ? 'is-active' : ''}`}>
+          {isActive ? t('server_active') : t('server_ready')}
+        </span>
+      </div>
+    </button>
   );
 }

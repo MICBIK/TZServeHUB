@@ -5,7 +5,7 @@
   "identifier": "com.tauri.dev",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://127.0.0.1:4175",
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build"
   },
@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "ServerHUB",
-        "width": 1400,
-        "height": 900,
+        "width": 920,
+        "height": 620,
+        "minWidth": 920,
+        "minHeight": 620,
         "resizable": true,
         "fullscreen": false
       }

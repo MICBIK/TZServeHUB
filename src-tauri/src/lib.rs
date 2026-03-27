@@ -1,18 +1,18 @@
-mod commands;
 mod adapters;
-mod probes;
-mod metrics;
-mod storage;
-mod scheduler;
 mod alerts;
-mod models;
+mod commands;
 mod error;
+mod metrics;
+mod models;
+mod probes;
+mod scheduler;
+mod storage;
 
-use commands::*;
+use tauri::Manager;
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    tauri::Builder::default()
+fn configure_builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
+    builder
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -21,6 +21,16 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // Initialize database and start background services
+            tauri::async_runtime::block_on(async {
+                let pool = storage::database::init().await?;
+                app.manage(pool.clone());
+                scheduler::poller::start(pool.clone()).await?;
+                storage::retention::start(pool.clone()).await;
+                Ok::<(), Box<dyn std::error::Error>>(())
+            })?;
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -32,6 +42,61 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::update_settings,
         ])
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    configure_builder(tauri::Builder::default())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::configure_builder;
+    use tauri::Manager;
+    use tauri::{
+        ipc::{CallbackFn, InvokeBody},
+        test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY},
+        webview::InvokeRequest,
+        WebviewWindowBuilder,
+    };
+
+    #[test]
+    fn desktop_shell_bootstraps_and_answers_list_servers() {
+        let temp_dir =
+            std::env::temp_dir().join(format!("serverhub-smoke-{}", uuid::Uuid::new_v4()));
+        std::env::set_var("SERVERHUB_DATA_DIR", &temp_dir);
+
+        let app = configure_builder(mock_builder())
+            .build(mock_context(noop_assets()))
+            .expect("mock app should build");
+        let pool = tauri::async_runtime::block_on(crate::storage::database::init())
+            .expect("test database should initialize");
+        app.manage(pool);
+        let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview should build");
+
+        let response = get_ipc_response(
+            &webview,
+            InvokeRequest {
+                cmd: "list_servers".into(),
+                callback: CallbackFn(0),
+                error: CallbackFn(1),
+                url: "http://tauri.localhost".parse().unwrap(),
+                body: InvokeBody::default(),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_string(),
+            },
+        )
+        .expect("list_servers IPC should succeed");
+
+        let servers = response
+            .deserialize::<Vec<crate::models::server::ServerConfig>>()
+            .expect("response should deserialize");
+        assert!(servers.is_empty());
+
+        std::fs::remove_dir_all(temp_dir).ok();
+    }
 }

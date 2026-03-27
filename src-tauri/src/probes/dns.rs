@@ -1,7 +1,9 @@
+#![allow(dead_code)]
+
+use crate::error::AppResult;
+use std::net::{IpAddr, SocketAddr};
 use tokio::net::UdpSocket;
 use tokio::time::{timeout, Duration};
-use std::net::{IpAddr, SocketAddr};
-use crate::error::AppResult;
 
 pub struct DnsProbe;
 
@@ -10,7 +12,12 @@ impl DnsProbe {
         Self
     }
 
-    pub async fn resolve(&self, hostname: &str, dns_server: IpAddr, timeout_ms: u64) -> AppResult<DnsResult> {
+    pub async fn resolve(
+        &self,
+        hostname: &str,
+        dns_server: IpAddr,
+        timeout_ms: u64,
+    ) -> AppResult<DnsResult> {
         let start = std::time::Instant::now();
 
         let query = Self::build_dns_query(hostname);
@@ -23,8 +30,9 @@ impl DnsProbe {
         let mut buf = [0u8; 512];
         let result = timeout(
             Duration::from_millis(timeout_ms),
-            socket.recv_from(&mut buf)
-        ).await;
+            socket.recv_from(&mut buf),
+        )
+        .await;
 
         let elapsed = start.elapsed().as_millis() as f64;
 
@@ -45,9 +53,7 @@ impl DnsProbe {
 
     fn build_dns_query(hostname: &str) -> Vec<u8> {
         let mut query = vec![
-            0x00, 0x01, 0x01, 0x00,
-            0x00, 0x01, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
 
         for part in hostname.split('.') {

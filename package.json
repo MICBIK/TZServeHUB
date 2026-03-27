@@ -4,11 +4,16 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "css:generate": "node ./scripts/generate-tailwind.mjs",
+    "dev": "pnpm css:generate && vite",
+    "build": "pnpm css:generate && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "check": "./scripts/check-frontend.sh",
+    "check:rust": "./scripts/check-rust.sh",
+    "check:go": "./scripts/check-go.sh",
+    "check:all": "./scripts/check-all.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

@@ -63,3 +63,7 @@ go.work
 *.swp
 *.swo
 *~
+.gstack/
+.claude/
+.codex/
+CLAUDE.md

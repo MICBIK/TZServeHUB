@@ -40,7 +40,7 @@ Constraints:
 
 - Make the repository pass the baseline validation commands that exist today.
 - Deliver one working monitoring slice: server registry + adapter collection + SQLite persistence + dashboard/history retrieval.
-- Define one canonical contract for metrics payloads, internal metric semantics, and persisted schema.
+- Define one canonical contract for metrics payloads, metric series identity, and persisted schema.
 - Ensure unfinished feature areas fail safely through explicit empty states or deferred command surfaces rather than silent placeholders.
 - Re-align architecture/tooling docs to the code that actually exists.
 
@@ -84,10 +84,12 @@ Alternatives considered:
 
 Decision:
 - Server registry and settings will be stored and queried through SQLite-backed Tauri commands rather than in-memory defaults.
+- Per-server connection metadata will include any adapter-specific auth configuration required to communicate with that target.
 
 Why:
 - Current command handlers return defaults or empty arrays, which makes the app appear functional while persisting nothing.
 - The migration file already establishes the intended persistence direction.
+- The Go agent integration cannot be made reliable unless the desktop can persist the token needed for authenticated metric fetches.
 
 Alternatives considered:
 - Keep settings in memory and add persistence later.
@@ -96,11 +98,15 @@ Alternatives considered:
 ### 4. Define a canonical internal metric contract independent of adapter-specific payload shape
 
 Decision:
-- The metrics pipeline will normalize external payloads into one internal representation with explicit metric type, labels, timestamp, server ID, and vantage point.
+- The metrics pipeline will normalize external payloads into one internal representation with explicit metric type, labels, timestamp, server ID, vantage point, and a canonical series identity.
+- Raw and rolled-up storage must preserve the label set needed to query one series unambiguously.
+- History queries must target a single series via `server_id + key + labels + vantage_point`, or an equivalent canonical selector with reversible label semantics.
+- Rolled-up history responses must expose explicit aggregate buckets rather than pretending rollups are raw points.
 
 Why:
 - Exporter-style sources expose counters and labels differently.
 - The current code mixes raw counters, derived rates, and adapter-specific keys in a way that will not scale to multiple adapters.
+- History queries for per-core, per-disk, and per-interface metrics become ambiguous if the series label set is not preserved across storage and retrieval.
 
 Alternatives considered:
 - Store adapter-native keys verbatim and normalize only in the UI.
@@ -109,20 +115,26 @@ Alternatives considered:
 ### 5. Make the Go agent contract explicit and testable
 
 Decision:
-- The Go agent API contract will be treated as a formal integration boundary, including field names, auth behavior, and health endpoint expectations.
+- The Go agent API contract will be treated as a formal integration boundary, including field names, desktop auth configuration, and endpoint auth expectations.
+- If a Go agent token is configured, the desktop MUST send it as a Bearer token on `/api/metrics`.
+- `/api/health` remains unauthenticated so the desktop can distinguish liveness failures from credential failures.
 
 Why:
 - The current Rust adapter cannot safely deserialize the current Go agent payload shape.
 - The README says `/api/metrics` requires Bearer auth, but the current Gin middleware protects all endpoints, including health.
+- The current desktop server model does not yet describe how authenticated agent requests obtain their token.
 
 Alternatives considered:
+- Require auth on both `/api/health` and `/api/metrics`.
+  - Rejected because basic reachability checks would become indistinguishable from credential failures during onboarding and recovery.
 - Leave the Rust adapter permissive and patch deserialization ad hoc.
   - Rejected because silent drift will recur without one declared contract.
 
 ### 6. Explicitly defer unfinished domains instead of shipping hidden TODO behavior
 
 Decision:
-- Alerts, probes, and Glances integration may remain incomplete in this change, but the UI and command surface must present that state explicitly rather than relying on placeholder TODO text or missing modules.
+- Alerts and probes may remain incomplete in this change, but the UI and command surface must present that state as explicit read-only/deferred pages rather than relying on placeholder TODO text or missing modules.
+- `glances` is not part of the MVP adapter baseline for this change.
 
 Why:
 - The user indicated unfinished work is acceptable, but hidden incompleteness is different from explicit deferral.
@@ -130,6 +142,8 @@ Why:
 Alternatives considered:
 - Keep existing TODO placeholders.
   - Rejected because they leak internal implementation status into user-facing surfaces and fail the “working MVP baseline” goal.
+- Temporarily hide unfinished routes.
+  - Rejected because explicit deferred states are easier to test and keep the remaining scope visible.
 
 ## Risks / Trade-offs
 
@@ -145,10 +159,10 @@ Alternatives considered:
 ## Migration Plan
 
 1. Fix frontend import/type issues and remove lint/build blockers.
-2. Establish database initialization and migrate server/settings commands to persistent storage.
-3. Align SQL schema, Rust models, and command return shapes.
-4. Reconcile Go agent payload/auth semantics with the Rust adapter.
-5. Wire the minimum polling -> store -> history query path.
+2. Establish database initialization and migrate server/settings commands to persistent storage, including adapter auth configuration.
+3. Align SQL schema, Rust models, and command return shapes, including series labels/selectors and rollup DTOs.
+4. Reconcile Go agent payload, token handling, and health endpoint semantics with the Rust adapter.
+5. Wire the minimum polling -> normalized raw storage -> derived rate/rollup -> history query routing path.
 6. Replace placeholder pages with explicit empty/loading/error/data states backed by the working commands.
 7. Update `docs/architecture.md` and `docs/project-tooling.md` to match shipped reality and deferred scope.
 
@@ -157,8 +171,8 @@ Rollback strategy:
 - If a schema or contract decision proves too disruptive, keep the old code paths disabled and ship the narrower node_exporter-backed slice first.
 - Do not partially roll out mixed agent/schema contracts without corresponding adapter changes.
 
-## Open Questions
+## Resolved Scope Notes
 
-- Should the first working adapter baseline be `node_exporter`, `go_agent`, or both?
-- Should `/api/health` remain unauthenticated for liveness checks, or should the docs be updated to require auth consistently?
-- Should alerts/probes receive read-only empty-state pages in this change, or be temporarily hidden until command support exists?
+- Supported MVP adapters for this change are `node_exporter` and `go_agent`; `glances` remains deferred.
+- `/api/health` remains unauthenticated for liveness checks, while `/api/metrics` requires a Bearer token when the Go agent is configured with one.
+- Alerts and probes stay routable in the desktop shell as explicit deferred/read-only pages rather than being hidden.

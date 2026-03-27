@@ -1,7 +1,9 @@
+#![allow(dead_code)]
+
+use crate::error::AppResult;
+use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::time::{timeout, Duration};
-use std::net::SocketAddr;
-use crate::error::AppResult;
 
 pub struct TcpProbe;
 
@@ -13,10 +15,7 @@ impl TcpProbe {
     pub async fn check(&self, addr: SocketAddr, timeout_ms: u64) -> AppResult<TcpResult> {
         let start = std::time::Instant::now();
 
-        let result = timeout(
-            Duration::from_millis(timeout_ms),
-            TcpStream::connect(addr)
-        ).await;
+        let result = timeout(Duration::from_millis(timeout_ms), TcpStream::connect(addr)).await;
 
         let elapsed = start.elapsed().as_millis() as f64;
 

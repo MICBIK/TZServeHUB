@@ -21,6 +21,7 @@ pub enum AppError {
     Ping(#[from] surge_ping::SurgeError),
 
     #[error("Notification error: {0}")]
+    #[allow(dead_code)]
     Notification(String),
 
     #[error("{0}")]
@@ -37,3 +38,18 @@ impl serde::Serialize for AppError {
 }
 
 pub type AppResult<T> = Result<T, AppError>;
+
+impl AppError {
+    pub fn to_user_message(&self) -> String {
+        match self {
+            AppError::Database(_) => "Failed to access database".to_string(),
+            AppError::Migration(_) => "Failed to run database migration".to_string(),
+            AppError::Http(e) => format!("Network error: {}", e),
+            AppError::Serde(_) => "Failed to process data format".to_string(),
+            AppError::Io(e) => format!("File system error: {}", e),
+            AppError::Ping(e) => format!("Network ping failed: {}", e),
+            AppError::Notification(msg) => format!("Notification error: {}", msg),
+            AppError::Custom(msg) => msg.clone(),
+        }
+    }
+}

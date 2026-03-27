@@ -19,6 +19,15 @@ The system SHALL store configured monitoring targets in SQLite and SHALL expose 
 - **WHEN** the desktop app restarts after servers were configured
 - **THEN** the previously stored servers are still available from the command layer
 
+### Requirement: Server connection configuration SHALL persist with each target
+
+The system SHALL persist the adapter-specific connection fields required to communicate with each configured target, including optional bearer-token configuration for Go agent targets.
+
+#### Scenario: Authenticated target survives restart
+
+- **WHEN** the user saves a Go agent target with bearer-token configuration and the desktop app restarts
+- **THEN** subsequent collection requests for that target can still apply the saved auth configuration without requiring the user to re-enter it
+
 ### Requirement: App settings SHALL persist across sessions
 
 The system SHALL persist app settings such as polling defaults, retention settings, theme, and language through the settings command surface.

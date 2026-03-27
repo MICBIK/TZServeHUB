@@ -1,2 +1,2 @@
-pub mod rules;
 pub mod notifier;
+pub mod rules;

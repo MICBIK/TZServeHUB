@@ -1,25 +1,27 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useMetricsStore } from '../stores/metricsStore';
+import type { ServerConfig } from '../types/server';
 
-export function usePolling(serverId: string | null, intervalMs: number = 10000) {
-  const fetchMetrics = useMetricsStore((s) => s.fetchMetrics);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+export function usePolling(servers: ServerConfig[]) {
+  const fetchMetrics = useMetricsStore((state) => state.fetchMetrics);
 
   useEffect(() => {
-    if (!serverId) return;
+    const enabledServers = servers.filter((server) => server.enabled);
 
-    // Fetch immediately
-    fetchMetrics(serverId);
+    if (enabledServers.length === 0) {
+      return undefined;
+    }
 
-    // Then poll
-    timerRef.current = setInterval(() => {
-      fetchMetrics(serverId);
-    }, intervalMs);
+    const timers = enabledServers.map((server) => {
+      void fetchMetrics(server.id);
+
+      return window.setInterval(() => {
+        void fetchMetrics(server.id);
+      }, Math.max(server.polling_interval_sec, 1) * 1000);
+    });
 
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      timers.forEach((timer) => window.clearInterval(timer));
     };
-  }, [serverId, intervalMs, fetchMetrics]);
+  }, [fetchMetrics, servers]);
 }

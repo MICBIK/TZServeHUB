@@ -26,6 +26,8 @@ type CPUMetrics struct {
 type MemoryMetrics struct {
 	Total       uint64  `json:"total"`
 	Used        uint64  `json:"used"`
+	Free        uint64  `json:"free"`
+	Cached      uint64  `json:"cached"`
 	Available   uint64  `json:"available"`
 	UsedPercent float64 `json:"used_percent"`
 }
@@ -72,6 +74,8 @@ func Collect() (*HostMetrics, error) {
 		m.Memory = MemoryMetrics{
 			Total:       vm.Total,
 			Used:        vm.Used,
+			Free:        vm.Free,
+			Cached:      vm.Cached,
 			Available:   vm.Available,
 			UsedPercent: vm.UsedPercent,
 		}

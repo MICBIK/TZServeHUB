@@ -1,79 +1,121 @@
-# ServerHUB 项目工具清单
+# ServerHUB Project Tooling
 
-## 开发环境
+> 更新日期：2026-03-19
+> 说明：以下内容按当前仓库实际依赖、脚本与验证流程整理
 
-| 工具 | 版本 | 用途 |
-|------|------|------|
-| Rust | 1.92.0 | 后端核心 |
-| Cargo | 1.92.0 | Rust 包管理 |
-| Tauri CLI | 2.10.0 | Tauri 构建工具 |
-| Node.js | 25.8.0 | 前端运行时 |
-| pnpm | (已安装) | 前端包管理（推荐） |
-| bun | (已安装) | 备选包管理/运行时 |
+## 1. 开发环境
 
-## Claude Code Skills（项目相关）
+| 工具 | 当前仓库用法 |
+| --- | --- |
+| Node.js | 前端构建、Tauri CLI |
+| pnpm | 前端依赖与脚本执行 |
+| Rust / Cargo | Tauri 后端与测试 |
+| Go | `agent/` 构建与测试 |
 
-| Skill | 用途 | 触发场景 |
-|-------|------|----------|
-| `/rust-dev` | Rust 开发规范、Cargo 管理、异步编程 | 编写 Rust 后端代码 |
-| `/js-ts-dev` | TypeScript/React 开发、Node 生态 | 编写前端代码 |
-| `/database` | SQLite schema 设计、查询优化 | 本地存储模块 |
-| `/api-design` | Tauri command 接口设计 | 前后端通信接口 |
-| `/testing` | Rust #[test] + Vitest 前端测试 | 单元/集成测试 |
-| `/context7` | 查询 Tauri/React/sysinfo 最新文档 | API 验证 |
-| `/code-simplifier` | 代码简化与重构 | 代码优化阶段 |
-| `/commit` | Git 提交规范 | 版本管理 |
-| `/git-workflow` | 分支管理、PR 工作流 | 协作开发 |
-| `/deep-thinking` | 复杂架构决策推理 | 架构设计 |
-| `/security-architecture` | 安全架构设计 | 安全接入模块 |
-| `/network-protocol` | 网络协议、DNS/TLS | 探测子系统 |
-| `/docker-k8s` | 容器化部署 | 未来部署阶段 |
-| `/devsecops` | CI/CD 安全 | 构建流水线 |
+## 2. 前端依赖
 
-## MCP 工具
+来自 [package.json](/Users/baihaibin/Documents/WorkSpares/ServerHUB/package.json)：
 
-| MCP 工具 | 用途 | 使用场景 |
-|----------|------|----------|
-| `mcp__context7__resolve-library-id` | 查找库的 Context7 ID | 查询 tauri/react/sysinfo 文档前 |
-| `mcp__context7__query-docs` | 查询库的最新文档和示例 | 验证 API 签名、查找用法 |
+- `react`
+- `react-dom`
+- `react-router-dom`
+- `zustand`
+- `recharts`
+- `dayjs`
+- `@tauri-apps/api`
+- `@tauri-apps/plugin-notification`
 
-## Rust Crate 依赖规划
+开发依赖：
 
-### 核心依赖
-| Crate | 版本 | 用途 |
-|-------|------|------|
-| tauri | 2.x | 桌面应用框架 |
-| tauri-plugin-shell | 2.x | 系统命令执行 |
-| tauri-plugin-notification | 2.x | 桌面通知 |
-| sysinfo | 0.33+ | 本地系统信息采集 |
-| tokio | 1.x (full) | 异步运行时 |
-| serde / serde_json | 1.x | 序列化 |
-| sqlx | 0.8+ (sqlite, runtime-tokio) | SQLite 异步操作 |
-| reqwest | 0.12+ (json, rustls-tls) | HTTP 客户端（拉取 exporter） |
-| thiserror | 2.x | 错误类型定义 |
-| tracing / tracing-subscriber | 0.1 / 0.3 | 结构化日志 |
-| chrono | 0.4 | 时间处理 |
-| surge-ping | 0.8+ | ICMP Ping 探测 |
+- `vite`
+- `typescript`
+- `eslint`
+- `typescript-eslint`
+- `@vitejs/plugin-react`
+- `tailwindcss`
+- `postcss`
+- `autoprefixer`
+- `@tauri-apps/cli`
 
-### 前端依赖
-| 包 | 版本 | 用途 |
-|----|------|------|
-| @tauri-apps/api | ^2.0 | Tauri 前端 API |
-| @tauri-apps/plugin-notification | ^2.0 | 通知插件前端绑定 |
-| react | ^19.0 | UI 框架 |
-| react-dom | ^19.0 | DOM 渲染 |
-| typescript | ^5.7 | 类型系统 |
-| recharts | ^2.15 | 图表库 |
-| antd | ^5.24 | UI 组件库 |
-| tailwindcss | ^4.0 | 样式工具 |
-| zustand | ^5.0 | 状态管理 |
-| @tanstack/react-query | ^5.0 | 数据获取/缓存 |
-| dayjs | ^1.11 | 日期处理 |
+未使用、已从文档剔除：
 
-## 验证链
+- `antd`
+- `@tanstack/react-query`
 
-开发过程中 API 验证优先级：
-1. `Grep` 项目内已有用法
-2. `mcp__context7__query-docs` 查最新文档
-3. `WebSearch` 搜索官方文档
-4. 标注 `// TODO: verify` 并告知
+## 3. Rust 依赖
+
+来自 [Cargo.toml](/Users/baihaibin/Documents/WorkSpares/ServerHUB/src-tauri/Cargo.toml)：
+
+- `tauri`
+- `tauri-plugin-log`
+- `tauri-plugin-notification`
+- `tokio`
+- `serde`
+- `serde_json`
+- `reqwest`
+- `sqlx`
+- `chrono`
+- `async-trait`
+- `thiserror`
+- `uuid`
+- `surge-ping`
+- `log`
+
+## 4. 常用脚本
+
+根目录：
+
+- `pnpm css:generate`
+- `pnpm lint`
+- `pnpm build`
+- `pnpm check`
+- `pnpm check:rust`
+- `pnpm check:go`
+- `pnpm check:all`
+- `pnpm tauri dev`
+
+脚本文件：
+
+- [scripts/check-frontend.sh](/Users/baihaibin/Documents/WorkSpares/ServerHUB/scripts/check-frontend.sh)
+- [scripts/check-rust.sh](/Users/baihaibin/Documents/WorkSpares/ServerHUB/scripts/check-rust.sh)
+- [scripts/check-go.sh](/Users/baihaibin/Documents/WorkSpares/ServerHUB/scripts/check-go.sh)
+- [scripts/check-all.sh](/Users/baihaibin/Documents/WorkSpares/ServerHUB/scripts/check-all.sh)
+- [scripts/generate-tailwind.mjs](/Users/baihaibin/Documents/WorkSpares/ServerHUB/scripts/generate-tailwind.mjs)
+
+## 5. 当前验证基线
+
+当前仓库的可执行验证基线：
+
+- `pnpm lint`
+- `pnpm build`
+- `cargo check --manifest-path src-tauri/Cargo.toml`
+- `cargo test --manifest-path src-tauri/Cargo.toml`
+- `./scripts/check-go.sh`
+
+说明：
+
+- `pnpm build` 会先执行 `pnpm css:generate`，生成 `src/generated/tailwind.css`
+- `cargo test` 中已包含 adapter parser、derived metrics、Tauri shell smoke coverage
+- Go module 位于 `agent/`，因此根目录直接执行 `go test ./...` 会失败；统一通过 `./scripts/check-go.sh` 进入 `agent/` 再跑验证
+
+## 6. 测试覆盖现状
+
+已落地：
+
+- Rust 单元测试：`node_exporter` labels 解析
+- Rust 单元测试：`go_agent` payload 反序列化
+- Rust 单元测试：连续 polling 产出 rate、labels 隔离 continuity、counter reset 不输出伪 rate
+- Rust smoke test：mock runtime 启动 app 并调用 `list_servers`
+- 前端 lint / build：覆盖 repo-owned CSS 生成与 hydrated monitoring pages 的编译基线
+
+仍待后续扩展：
+
+- 真实 probe 调度集成测试
+- metrics history 的端到端 UI 验证
+- 告警规则管理的完整交互测试
+
+## 7. 开发约定
+
+- 搜索优先用 `rg`
+- Rust 数据库查询默认使用运行时 `sqlx::query`，避免离线环境被 `query!` 阻断
+- 变更需要同时关注 OpenSpec、实现代码、验证脚本三层一致性

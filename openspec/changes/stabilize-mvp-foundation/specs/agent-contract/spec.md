@@ -23,7 +23,16 @@ The Go agent SHALL apply documented auth behavior consistently across health and
 - **WHEN** agent token authentication is configured and the client requests `/api/metrics` without a valid bearer token
 - **THEN** the agent rejects the request with an unauthorized response
 
-#### Scenario: Health endpoint semantics are documented and implemented consistently
+#### Scenario: Health endpoint remains available for liveness checks
 
-- **WHEN** the client requests `/api/health`
-- **THEN** the endpoint behavior matches the documented auth expectation used by the desktop integration
+- **WHEN** agent token authentication is configured and the client requests `/api/health` without a bearer token
+- **THEN** the endpoint responds according to the documented unauthenticated liveness contract used by the desktop integration
+
+### Requirement: Desktop adapter SHALL apply saved agent auth configuration
+
+The desktop integration SHALL persist and apply any Go agent bearer token required for metrics collection.
+
+#### Scenario: Metrics request uses saved token
+
+- **WHEN** a configured Go agent target includes a bearer token and the desktop requests `/api/metrics`
+- **THEN** the request includes the saved `Authorization: Bearer <token>` header expected by the agent

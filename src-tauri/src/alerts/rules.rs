@@ -1,6 +1,8 @@
-use std::collections::HashMap;
-use crate::models::alert::{AlertRule, AlertCondition, AlertEvent, AlertStatus};
+#![allow(dead_code)]
+
+use crate::models::alert::{AlertCondition, AlertEvent, AlertRule, AlertStatus};
 use chrono::Utc;
+use std::collections::HashMap;
 
 pub struct AlertEngine {
     rules: HashMap<String, AlertRule>,
@@ -45,38 +47,36 @@ impl AlertEngine {
             };
 
             if breached {
-                let state = self.firing_state.entry(rule.id.clone()).or_insert(FiringState {
-                    first_breach_at: now,
-                    last_check_at: now,
-                });
-
+                let state = self
+                    .firing_state
+                    .entry(rule.id.clone())
+                    .or_insert(FiringState {
+                        first_breach_at: now,
+                        last_check_at: now,
+                    });
                 state.last_check_at = now;
 
                 if now - state.first_breach_at >= rule.duration_sec as i64 {
                     events.push(AlertEvent {
-                        id: uuid::Uuid::new_v4().to_string().parse().unwrap_or(0),
+                        id: uuid::Uuid::new_v4().to_string(),
                         rule_id: rule.id.clone(),
-                        server_id: rule.server_id.clone().unwrap_or_default(),
-                        metric_key: metric_key.to_string(),
-                        value,
+                        server_id: rule.server_id.clone(),
                         status: AlertStatus::Firing,
+                        message: format!("{metric_key} breached threshold with value {value}"),
                         fired_at: now,
                         resolved_at: None,
                     });
                 }
-            } else {
-                if self.firing_state.remove(&rule.id).is_some() {
-                    events.push(AlertEvent {
-                        id: uuid::Uuid::new_v4().to_string().parse().unwrap_or(0),
-                        rule_id: rule.id.clone(),
-                        server_id: rule.server_id.clone().unwrap_or_default(),
-                        metric_key: metric_key.to_string(),
-                        value,
-                        status: AlertStatus::Resolved,
-                        fired_at: now,
-                        resolved_at: Some(now),
-                    });
-                }
+            } else if self.firing_state.remove(&rule.id).is_some() {
+                events.push(AlertEvent {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    rule_id: rule.id.clone(),
+                    server_id: rule.server_id.clone(),
+                    status: AlertStatus::Resolved,
+                    message: format!("{metric_key} recovered with value {value}"),
+                    fired_at: now,
+                    resolved_at: Some(now),
+                });
             }
         }
 

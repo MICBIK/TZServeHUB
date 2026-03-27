@@ -14,23 +14,22 @@ func Run(cfg *config.Config) error {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	// Token auth middleware
-	if cfg.Token != "" {
-		r.Use(func(c *gin.Context) {
+	r.GET("/api/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "hostname": cfg.Hostname})
+	})
+
+	authMiddleware := func(c *gin.Context) {
+		if cfg.Token != "" {
 			token := c.GetHeader("Authorization")
 			if token != "Bearer "+cfg.Token {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 				return
 			}
-			c.Next()
-		})
+		}
+		c.Next()
 	}
 
-	r.GET("/api/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "hostname": cfg.Hostname})
-	})
-
-	r.GET("/api/metrics", func(c *gin.Context) {
+	r.GET("/api/metrics", authMiddleware, func(c *gin.Context) {
 		metrics, err := collector.Collect()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

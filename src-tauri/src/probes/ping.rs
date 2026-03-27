@@ -1,7 +1,9 @@
-use surge_ping::{Client, Config, PingIdentifier, PingSequence};
-use std::time::Duration;
-use std::net::IpAddr;
+#![allow(dead_code)]
+
 use crate::error::AppResult;
+use std::net::IpAddr;
+use std::time::Duration;
+use surge_ping::{Client, Config, PingIdentifier, PingSequence};
 
 pub struct PingProbe {
     client: Client,
@@ -15,7 +17,10 @@ impl PingProbe {
     }
 
     pub async fn ping(&self, addr: IpAddr, count: u16) -> AppResult<PingResult> {
-        let mut pinger = self.client.pinger(addr, PingIdentifier(rand::random())).await;
+        let mut pinger = self
+            .client
+            .pinger(addr, PingIdentifier(rand::random()))
+            .await;
 
         let mut rtts = Vec::new();
         let mut lost = 0;

@@ -4,17 +4,25 @@ export interface MetricPoint {
   value: number;
   metric_type: 'counter' | 'gauge' | 'state';
   vantage_point: string;
+  labels: Record<string, string>;
   timestamp: number;
 }
 
 export interface AggregatedMetric {
   server_id: string;
   key: string;
+  labels: Record<string, string>;
+  vantage_point: string;
+  resolution: '1m' | '15m';
   min_val: number;
   max_val: number;
   avg_val: number;
   bucket: number;
 }
+
+export type MetricHistoryResponse =
+  | { kind: 'raw'; resolution: 'raw'; points: MetricPoint[] }
+  | { kind: 'rollup'; resolution: '1m' | '15m'; buckets: AggregatedMetric[] };
 
 export interface HostMetrics {
   timestamp: number;
@@ -25,6 +33,8 @@ export interface HostMetrics {
   memory: {
     total: number;
     used: number;
+    free: number;
+    cached: number;
     available: number;
     used_percent: number;
   };

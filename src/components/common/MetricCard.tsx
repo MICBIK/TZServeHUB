@@ -7,20 +7,26 @@ interface MetricCardProps {
 
 export default function MetricCard({ title, value, unit, trend }: MetricCardProps) {
   const trendColors = {
-    up: 'text-red-400',
-    down: 'text-green-400',
-    neutral: 'text-gray-400',
+    up: 'metric-trend-up',
+    down: 'metric-trend-down',
+    neutral: 'metric-trend-neutral',
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-      <h4 className="text-sm text-gray-400 mb-2">{title}</h4>
-      <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-semibold text-white">{value}</span>
-        {unit && <span className="text-sm text-gray-500">{unit}</span>}
+    <div className="metric-card rounded-[26px] border p-5 shadow-xl">
+      <h4 className="metric-card-title">{title}</h4>
+      <div className="metric-card-body mt-4">
+        <span className="metric-card-value" title={String(value)}>
+          {value}
+        </span>
+        {unit ? (
+          <span className="metric-card-unit" title={unit}>
+            {unit}
+          </span>
+        ) : null}
       </div>
       {trend && (
-        <span className={`text-xs ${trendColors[trend]} mt-1 block`}>
+        <span className={`mt-3 block text-xs ${trendColors[trend]}`}>
           {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'}
         </span>
       )}

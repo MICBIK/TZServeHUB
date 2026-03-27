@@ -25,6 +25,7 @@ pub struct MetricPoint {
     pub value: f64,
     pub metric_type: MetricType,
     pub vantage_point: String,
+    pub labels: HashMap<String, String>,
     pub timestamp: i64,
 }
 
@@ -32,8 +33,24 @@ pub struct MetricPoint {
 pub struct AggregatedMetric {
     pub server_id: String,
     pub key: String,
+    pub labels: HashMap<String, String>,
+    pub vantage_point: String,
+    pub resolution: String,
     pub min_val: f64,
     pub max_val: f64,
     pub avg_val: f64,
     pub bucket: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum MetricHistoryResponse {
+    Raw {
+        resolution: String,
+        points: Vec<MetricPoint>,
+    },
+    Rollup {
+        resolution: String,
+        buckets: Vec<AggregatedMetric>,
+    },
 }

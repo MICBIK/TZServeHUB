@@ -2,7 +2,7 @@
 
 ### Requirement: Desktop shell MUST build and load cleanly
 
-The desktop client SHALL pass the repository frontend validation commands and SHALL load the routed monitoring shell without broken imports, invalid type-only imports, or placeholder compile failures.
+The desktop client SHALL pass the repository frontend validation commands and SHALL load the routed monitoring shell without broken imports, invalid type-only imports, placeholder compile failures, or desktop startup regressions.
 
 #### Scenario: Frontend validation passes
 
@@ -11,8 +11,8 @@ The desktop client SHALL pass the repository frontend validation commands and SH
 
 #### Scenario: Application shell loads
 
-- **WHEN** the desktop application starts
-- **THEN** the main layout and configured routes load without module resolution or syntax errors
+- **WHEN** maintainers run the desktop startup smoke check for this change and the application starts
+- **THEN** the main layout and configured routes load without module resolution, syntax, or startup-time route errors
 
 ### Requirement: Monitoring pages MUST expose explicit runtime states
 

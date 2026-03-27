@@ -5,6 +5,8 @@ import * as api from '../services/tauri';
 interface SettingsStore {
   settings: AppSettings;
   loading: boolean;
+  hydrated: boolean;
+  error: string | null;
   fetchSettings: () => Promise<void>;
   updateSettings: (settings: AppSettings) => Promise<void>;
 }
@@ -19,19 +21,25 @@ const defaultSettings: AppSettings = {
 export const useSettingsStore = create<SettingsStore>((set) => ({
   settings: defaultSettings,
   loading: false,
+  hydrated: false,
+  error: null,
 
   fetchSettings: async () => {
-    set({ loading: true });
+    set({ loading: true, error: null });
     try {
       const settings = await api.getSettings();
-      set({ settings, loading: false });
-    } catch {
-      set({ loading: false });
+      set({ settings, loading: false, hydrated: true, error: null });
+    } catch (error) {
+      set({
+        loading: false,
+        hydrated: true,
+        error: error instanceof Error ? error.message : 'Failed to load settings',
+      });
     }
   },
 
   updateSettings: async (settings) => {
     const updated = await api.updateSettings(settings);
-    set({ settings: updated });
+    set({ settings: updated, error: null });
   },
 }));

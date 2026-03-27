@@ -220,7 +220,7 @@ async fn test_storage_retention_cleanup() {
 import { test, expect } from '@playwright/test';
 
 test('should add and remove server', async ({ page }) => {
-  await page.goto('http://localhost:1420');
+  await page.goto('http://127.0.0.1:4175');
 
   // 添加服务器
   await page.click('[data-testid="add-server-button"]');
@@ -242,7 +242,7 @@ test('should add and remove server', async ({ page }) => {
 });
 
 test('should display metrics chart', async ({ page }) => {
-  await page.goto('http://localhost:1420/cpu');
+  await page.goto('http://127.0.0.1:4175/cpu');
 
   // 等待图表加载
   await page.waitForSelector('[data-testid="cpu-chart"]');
