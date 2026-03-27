@@ -1,4 +1,5 @@
-import type { ServerConfig } from '../../types/server';
+import type { ServerConfig, ServerStatus } from '../../types/server';
+import type { UiCopyKey } from '../../lib/uiCopy';
 import { useUiCopy } from '../../hooks/useUiCopy';
 import { getAdapterLabelKey } from '../../lib/serverLabels';
 
@@ -7,6 +8,28 @@ interface ServerCardProps {
   isActive: boolean;
   onClick: () => void;
   compact?: boolean;
+}
+
+function statusDotClass(status: ServerStatus): string {
+  switch (status) {
+    case 'online':
+      return 'is-online';
+    case 'error':
+      return 'is-error';
+    default:
+      return '';
+  }
+}
+
+function statusLabelKey(status: ServerStatus): UiCopyKey {
+  switch (status) {
+    case 'online':
+      return 'status_online';
+    case 'error':
+      return 'status_error_label';
+    default:
+      return 'status_unknown';
+  }
 }
 
 export default function ServerCard({ server, isActive, onClick, compact = false }: ServerCardProps) {
@@ -27,15 +50,18 @@ export default function ServerCard({ server, isActive, onClick, compact = false 
           {compact ? null : <p className="panel-label">{t('server_target_label')}</p>}
           <h3 className={`server-card-title truncate ${compact ? '' : 'mt-1'}`}>{server.name}</h3>
         </div>
-        <span className={`server-card-dot ${server.enabled ? 'is-online' : ''}`} />
+        <span
+          className={`server-card-dot ${statusDotClass(server.status)}`}
+          title={server.last_error ?? undefined}
+        />
       </div>
       <p className={`server-card-endpoint truncate ${compact ? 'text-[0.76rem]' : 'text-sm'}`}>
         {server.host}:{server.port}
       </p>
       <div className={`server-card-meta ${compact ? 'mt-2' : 'mt-3'}`}>
         <span className="truncate">{t(getAdapterLabelKey(server.adapter_type))}</span>
-        <span className={`server-card-status ${isActive ? 'is-active' : ''}`}>
-          {isActive ? t('server_active') : t('server_ready')}
+        <span className={`server-card-status ${isActive ? 'is-active' : ''} ${server.status === 'error' ? 'is-error' : ''}`}>
+          {isActive ? t('server_active') : t(statusLabelKey(server.status))}
         </span>
       </div>
     </button>

@@ -44,6 +44,9 @@ pub struct ServerConfig {
     pub ssh_key_path: Option<String>,
     pub ssh_passphrase: Option<String>,
     pub password: Option<String>,
+    pub status: String,
+    pub last_seen_at: Option<i64>,
+    pub last_error: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }

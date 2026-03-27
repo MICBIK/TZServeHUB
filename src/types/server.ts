@@ -1,3 +1,5 @@
+export type ServerStatus = 'online' | 'error' | 'unknown';
+
 export interface ServerConfig {
   id: string;
   name: string;
@@ -12,8 +14,18 @@ export interface ServerConfig {
   ssh_key_path?: string | null;
   ssh_passphrase?: string | null;
   password?: string | null;
+  status: ServerStatus;
+  last_seen_at?: number | null;
+  last_error?: string | null;
   created_at: number;
   updated_at: number;
+}
+
+export interface HealthSummary {
+  online: number;
+  offline: number;
+  error: number;
+  unknown: number;
 }
 
 export interface ServerFormData {

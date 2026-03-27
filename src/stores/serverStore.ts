@@ -9,6 +9,7 @@ interface ServerStore {
   hydrated: boolean;
   error: string | null;
   fetchServers: () => Promise<void>;
+  refreshServerStatus: () => Promise<void>;
   addServer: (input: ServerFormData) => Promise<void>;
   removeServer: (id: string) => Promise<void>;
   setActiveServer: (id: string | null) => void;
@@ -45,6 +46,22 @@ export const useServerStore = create<ServerStore>((set) => ({
         hydrated: true,
         error: error instanceof Error ? error.message : 'Failed to load servers',
       });
+    }
+  },
+
+  refreshServerStatus: async () => {
+    try {
+      const servers = await api.listServers();
+      set((state) => {
+        const activeServerId =
+          state.activeServerId && servers.some((server) => server.id === state.activeServerId)
+            ? state.activeServerId
+            : servers[0]?.id ?? null;
+
+        return { servers, activeServerId };
+      });
+    } catch {
+      // Silent refresh — don't overwrite existing error state
     }
   },
 

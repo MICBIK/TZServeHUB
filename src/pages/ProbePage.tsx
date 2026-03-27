@@ -1,17 +1,95 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import MetricCard from '../components/common/MetricCard';
 import StatePanel from '../components/common/StatePanel';
 import { useMonitoringView } from '../hooks/useMonitoringView';
 import { useUiCopy } from '../hooks/useUiCopy';
+import { runPingProbe, runTcpProbe, runDnsProbe } from '../services/tauri';
+import type { PingProbeResult, TcpProbeResult, DnsProbeResult } from '../types/probe';
 
 const ProbePage: React.FC = () => {
-  const { activeServer, serverError, servers, state } = useMonitoringView();
+  const { activeServer, serverError, state } = useMonitoringView();
   const { t } = useUiCopy();
   const hasSelectionContext =
     state !== 'hydrating' &&
     state !== 'server-error' &&
     state !== 'no-servers' &&
     state !== 'selection-required';
+
+  // Ping state
+  const [pingHost, setPingHost] = useState('');
+  const [pingCount, setPingCount] = useState('4');
+  const [pingLoading, setPingLoading] = useState(false);
+  const [pingResult, setPingResult] = useState<PingProbeResult | null>(null);
+  const [pingError, setPingError] = useState<string | null>(null);
+
+  // TCP state
+  const [tcpHost, setTcpHost] = useState('');
+  const [tcpPort, setTcpPort] = useState('80');
+  const [tcpTimeout, setTcpTimeout] = useState('5000');
+  const [tcpLoading, setTcpLoading] = useState(false);
+  const [tcpResult, setTcpResult] = useState<TcpProbeResult | null>(null);
+  const [tcpError, setTcpError] = useState<string | null>(null);
+
+  // DNS state
+  const [dnsDomain, setDnsDomain] = useState('');
+  const [dnsServer, setDnsServer] = useState('8.8.8.8');
+  const [dnsTimeout, setDnsTimeout] = useState('5000');
+  const [dnsLoading, setDnsLoading] = useState(false);
+  const [dnsResult, setDnsResult] = useState<DnsProbeResult | null>(null);
+  const [dnsError, setDnsError] = useState<string | null>(null);
+
+  // Pre-fill host from active server
+  const defaultHost = activeServer?.host ?? '';
+
+  async function handlePing() {
+    setPingLoading(true);
+    setPingError(null);
+    setPingResult(null);
+    try {
+      const host = pingHost.trim() || defaultHost;
+      const result = await runPingProbe(host, parseInt(pingCount, 10) || 4);
+      setPingResult(result);
+    } catch (err) {
+      setPingError(String(err));
+    } finally {
+      setPingLoading(false);
+    }
+  }
+
+  async function handleTcp() {
+    setTcpLoading(true);
+    setTcpError(null);
+    setTcpResult(null);
+    try {
+      const host = tcpHost.trim() || defaultHost;
+      const result = await runTcpProbe(host, parseInt(tcpPort, 10) || 80, parseInt(tcpTimeout, 10) || 5000);
+      setTcpResult(result);
+    } catch (err) {
+      setTcpError(String(err));
+    } finally {
+      setTcpLoading(false);
+    }
+  }
+
+  async function handleDns() {
+    setDnsLoading(true);
+    setDnsError(null);
+    setDnsResult(null);
+    try {
+      const domain = dnsDomain.trim();
+      if (!domain) {
+        setDnsError('Domain cannot be empty');
+        return;
+      }
+      const result = await runDnsProbe(domain, dnsServer.trim() || undefined, parseInt(dnsTimeout, 10) || 5000);
+      setDnsResult(result);
+    } catch (err) {
+      setDnsError(String(err));
+    } finally {
+      setDnsLoading(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -50,42 +128,158 @@ const ProbePage: React.FC = () => {
         <StatePanel eyebrow={t('status_selection')} title={t('selection_title')} description={t('selection_desc')} />
       ) : hasSelectionContext ? (
         <div className="dashboard-grid">
-          <section className="glass-panel col-span-12 rounded-[28px] border p-6 lg:col-span-7">
+          {/* Ping Probe */}
+          <section className="glass-panel col-span-12 rounded-[28px] border p-6 lg:col-span-4">
             <div className="summary-panel-header">
               <div className="min-w-0">
-                <p className="panel-label">{t('overview')}</p>
-                <h2 className="panel-title mt-2">{t('probe_scope_title')}</h2>
+                <p className="panel-label">{t('probe_signal_icmp')}</p>
+                <h2 className="panel-title mt-2">{t('probe_ping_title')}</h2>
               </div>
             </div>
-            <p className="hero-description mt-4">{t('probe_scope_desc')}</p>
-            <div className="summary-row mt-6">
-              <div className="min-w-0">
-                <p className="summary-label truncate">{activeServer?.name ?? t('unknown')}</p>
-                <p className="summary-subvalue truncate">
-                  {t('probe_active_target_desc', { count: servers.length })}
-                </p>
-              </div>
-              <span className="summary-value">{t('live')}</span>
+            <div className="mt-4 space-y-3">
+              <input
+                type="text"
+                className="app-input w-full"
+                placeholder={`${t('probe_host_label')} (${defaultHost || '0.0.0.0'})`}
+                value={pingHost}
+                onChange={(e) => setPingHost(e.target.value)}
+              />
+              <input
+                type="number"
+                className="app-input w-full"
+                placeholder={t('probe_count_label')}
+                value={pingCount}
+                onChange={(e) => setPingCount(e.target.value)}
+                min={1}
+                max={20}
+              />
+              <button
+                className="app-button w-full"
+                onClick={handlePing}
+                disabled={pingLoading}
+              >
+                {pingLoading ? t('probe_running') : t('probe_run')}
+              </button>
             </div>
+            {pingError ? (
+              <p className="mt-4 text-sm text-red-400">{t('probe_error')}: {pingError}</p>
+            ) : null}
+            {pingResult ? (
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <MetricCard title={t('probe_avg_rtt')} value={pingResult.avg_rtt_ms.toFixed(2)} unit="ms" />
+                <MetricCard title={t('probe_loss_rate')} value={pingResult.loss_rate.toFixed(1)} unit="%" />
+                <MetricCard title={t('probe_packets_sent')} value={pingResult.packets_sent} />
+                <MetricCard title={t('probe_packets_lost')} value={pingResult.packets_lost} />
+              </div>
+            ) : null}
           </section>
 
-          <section className="glass-panel col-span-12 rounded-[28px] border p-6 lg:col-span-5">
+          {/* TCP Probe */}
+          <section className="glass-panel col-span-12 rounded-[28px] border p-6 lg:col-span-4">
             <div className="summary-panel-header">
               <div className="min-w-0">
-                <p className="panel-label">{t('targets')}</p>
-                <h2 className="panel-title mt-2">{t('probe_signals_title')}</h2>
+                <p className="panel-label">{t('probe_signal_tcp')}</p>
+                <h2 className="panel-title mt-2">{t('probe_tcp_title')}</h2>
               </div>
             </div>
-            <div className="summary-list mt-6">
-              {[t('probe_signal_icmp'), t('probe_signal_tcp'), t('probe_signal_dns')].map((item) => (
-                <div key={item} className="summary-row">
-                  <div className="min-w-0">
-                    <p className="summary-label truncate">{item}</p>
-                    <p className="summary-subvalue">{t('deferred_notice')}</p>
-                  </div>
-                </div>
-              ))}
+            <div className="mt-4 space-y-3">
+              <input
+                type="text"
+                className="app-input w-full"
+                placeholder={`${t('probe_host_label')} (${defaultHost || '0.0.0.0'})`}
+                value={tcpHost}
+                onChange={(e) => setTcpHost(e.target.value)}
+              />
+              <input
+                type="number"
+                className="app-input w-full"
+                placeholder={t('probe_port_label')}
+                value={tcpPort}
+                onChange={(e) => setTcpPort(e.target.value)}
+                min={1}
+                max={65535}
+              />
+              <input
+                type="number"
+                className="app-input w-full"
+                placeholder={t('probe_timeout_label')}
+                value={tcpTimeout}
+                onChange={(e) => setTcpTimeout(e.target.value)}
+              />
+              <button
+                className="app-button w-full"
+                onClick={handleTcp}
+                disabled={tcpLoading}
+              >
+                {tcpLoading ? t('probe_running') : t('probe_run')}
+              </button>
             </div>
+            {tcpError ? (
+              <p className="mt-4 text-sm text-red-400">{t('probe_error')}: {tcpError}</p>
+            ) : null}
+            {tcpResult ? (
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <MetricCard
+                  title={t('probe_tcp_title')}
+                  value={tcpResult.reachable ? t('probe_reachable') : t('probe_unreachable')}
+                  trend={tcpResult.reachable ? 'up' : 'down'}
+                />
+                <MetricCard title={t('probe_latency')} value={tcpResult.latency_ms.toFixed(2)} unit="ms" />
+              </div>
+            ) : null}
+          </section>
+
+          {/* DNS Probe */}
+          <section className="glass-panel col-span-12 rounded-[28px] border p-6 lg:col-span-4">
+            <div className="summary-panel-header">
+              <div className="min-w-0">
+                <p className="panel-label">{t('probe_signal_dns')}</p>
+                <h2 className="panel-title mt-2">{t('probe_dns_title')}</h2>
+              </div>
+            </div>
+            <div className="mt-4 space-y-3">
+              <input
+                type="text"
+                className="app-input w-full"
+                placeholder={t('probe_domain_label')}
+                value={dnsDomain}
+                onChange={(e) => setDnsDomain(e.target.value)}
+              />
+              <input
+                type="text"
+                className="app-input w-full"
+                placeholder={`${t('probe_dns_server_label')} (8.8.8.8)`}
+                value={dnsServer}
+                onChange={(e) => setDnsServer(e.target.value)}
+              />
+              <input
+                type="number"
+                className="app-input w-full"
+                placeholder={t('probe_timeout_label')}
+                value={dnsTimeout}
+                onChange={(e) => setDnsTimeout(e.target.value)}
+              />
+              <button
+                className="app-button w-full"
+                onClick={handleDns}
+                disabled={dnsLoading}
+              >
+                {dnsLoading ? t('probe_running') : t('probe_run')}
+              </button>
+            </div>
+            {dnsError ? (
+              <p className="mt-4 text-sm text-red-400">{t('probe_error')}: {dnsError}</p>
+            ) : null}
+            {dnsResult ? (
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <MetricCard
+                  title={t('probe_dns_title')}
+                  value={dnsResult.resolved ? t('probe_resolved') : t('probe_not_resolved')}
+                  trend={dnsResult.resolved ? 'up' : 'down'}
+                />
+                <MetricCard title={t('probe_latency')} value={dnsResult.latency_ms.toFixed(2)} unit="ms" />
+              </div>
+            ) : null}
           </section>
         </div>
       ) : null}

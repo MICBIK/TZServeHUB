@@ -1,9 +1,13 @@
 use crate::adapters::{
     go_agent::GoAgentAdapter, node_exporter::NodeExporterAdapter, MetricAdapter,
 };
+use crate::alerts::notifier::AlertNotifier;
+use crate::alerts::rules::AlertEngine;
+use crate::commands::alerts::persist_alert_event;
 use crate::error::AppResult;
 use crate::metrics::{derived::DerivedMetricsEngine, rollup::RollupEngine};
 use crate::models::{
+    alert::AlertStatus,
     metric::RawMetric,
     server::{AccessMethod, AdapterType, AuthType, ServerConfig},
 };
@@ -12,17 +16,30 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     sync::Arc,
 };
+use tauri::{AppHandle, Runtime};
+use tokio::sync::Mutex;
 use tokio::time::{interval, sleep, Duration};
 
 const DESKTOP_VANTAGE_POINT: &str = "desktop";
 
-pub async fn start(pool: SqlitePool) -> AppResult<()> {
+pub async fn start<R: Runtime>(
+    pool: SqlitePool,
+    alert_engine: Arc<Mutex<AlertEngine>>,
+    app_handle: AppHandle<R>,
+) -> AppResult<()> {
     RollupEngine::start(pool.clone());
     tokio::spawn(async move {
+        let notifier = AlertNotifier::new(app_handle);
         let mut polling_tasks: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
         loop {
             match get_enabled_servers(&pool).await {
-                Ok(servers) => reconcile_polling_tasks(&pool, servers, &mut polling_tasks),
+                Ok(servers) => reconcile_polling_tasks(
+                    &pool,
+                    servers,
+                    &mut polling_tasks,
+                    &alert_engine,
+                    &notifier,
+                ),
                 Err(e) => log::error!("Failed to query servers: {e}"),
             }
             sleep(Duration::from_secs(10)).await;
@@ -31,10 +48,12 @@ pub async fn start(pool: SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
-fn reconcile_polling_tasks(
+fn reconcile_polling_tasks<R: Runtime>(
     pool: &SqlitePool,
     servers: Vec<ServerConfig>,
     tasks: &mut HashMap<String, tokio::task::JoinHandle<()>>,
+    alert_engine: &Arc<Mutex<AlertEngine>>,
+    notifier: &AlertNotifier<R>,
 ) {
     let current_ids: HashSet<String> = servers.iter().map(|server| server.id.clone()).collect();
     tasks.retain(|server_id, handle| {
@@ -48,11 +67,13 @@ fn reconcile_polling_tasks(
     for server in servers {
         if !tasks.contains_key(&server.id) {
             let pool_clone = pool.clone();
+            let engine_clone = alert_engine.clone();
+            let notifier_clone = notifier.clone();
             let server_id = server.id.clone();
             tasks.insert(
                 server_id,
                 tokio::spawn(async move {
-                    poll_server_loop(pool_clone, server).await;
+                    poll_server_loop(pool_clone, server, engine_clone, notifier_clone).await;
                 }),
             );
         }
@@ -74,6 +95,9 @@ fn row_to_server(row: &sqlx::sqlite::SqliteRow) -> ServerConfig {
         ssh_key_path: row.get("ssh_key_path"),
         ssh_passphrase: row.get("ssh_passphrase"),
         password: row.get("password"),
+        status: row.get("status"),
+        last_seen_at: row.get("last_seen_at"),
+        last_error: row.get("last_error"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
@@ -81,14 +105,19 @@ fn row_to_server(row: &sqlx::sqlite::SqliteRow) -> ServerConfig {
 
 async fn get_enabled_servers(pool: &SqlitePool) -> AppResult<Vec<ServerConfig>> {
     let rows = sqlx::query(
-        "SELECT id, name, host, port, adapter_type, access_method, polling_interval_sec, enabled, auth_token, auth_type, ssh_key_path, ssh_passphrase, password, created_at, updated_at FROM servers WHERE enabled = 1",
+        "SELECT id, name, host, port, adapter_type, access_method, polling_interval_sec, enabled, auth_token, auth_type, ssh_key_path, ssh_passphrase, password, status, last_seen_at, last_error, created_at, updated_at FROM servers WHERE enabled = 1",
     )
     .fetch_all(pool)
     .await?;
     Ok(rows.iter().map(row_to_server).collect())
 }
 
-async fn poll_server_loop(pool: SqlitePool, server: ServerConfig) {
+async fn poll_server_loop<R: Runtime>(
+    pool: SqlitePool,
+    server: ServerConfig,
+    alert_engine: Arc<Mutex<AlertEngine>>,
+    notifier: AlertNotifier<R>,
+) {
     let adapter: Arc<dyn MetricAdapter> = match server.adapter_type {
         AdapterType::GoAgent => Arc::new(GoAgentAdapter::new()),
         AdapterType::NodeExporter => Arc::new(NodeExporterAdapter::new()),
@@ -104,18 +133,50 @@ async fn poll_server_loop(pool: SqlitePool, server: ServerConfig) {
         match adapter.fetch_host_metrics(&server).await {
             Ok(metrics) => {
                 consecutive_failures = 0;
-                if let Err(e) = store_metrics(&pool, &server.id, metrics, &mut derived_engine).await
+                // Update server status to online
+                let now = chrono::Utc::now().timestamp();
+                if let Err(e) = sqlx::query(
+                    "UPDATE servers SET status = 'online', last_seen_at = ?, last_error = NULL WHERE id = ?",
+                )
+                .bind(now)
+                .bind(&server.id)
+                .execute(&pool)
+                .await
+                {
+                    log::error!("Failed to update server status for {}: {e}", server.name);
+                }
+                if let Err(e) = store_metrics(
+                    &pool,
+                    &server.id,
+                    metrics,
+                    &mut derived_engine,
+                    &alert_engine,
+                    &notifier,
+                )
+                .await
                 {
                     log::error!("Failed to store metrics for {}: {e}", server.name);
                 }
             }
             Err(e) => {
                 consecutive_failures += 1;
+                let error_msg = format!("{e}");
                 log::error!(
                     "Failed to fetch metrics from {} (attempt {}): {e}",
                     server.name,
                     consecutive_failures
                 );
+                // Update server status to error
+                if let Err(update_err) = sqlx::query(
+                    "UPDATE servers SET status = 'error', last_error = ? WHERE id = ?",
+                )
+                .bind(&error_msg)
+                .bind(&server.id)
+                .execute(&pool)
+                .await
+                {
+                    log::error!("Failed to update server error status for {}: {update_err}", server.name);
+                }
                 if consecutive_failures > 1 {
                     sleep(Duration::from_secs(std::cmp::min(
                         300,
@@ -133,20 +194,24 @@ fn labels_json(metric: &RawMetric) -> AppResult<String> {
     Ok(serde_json::to_string(&ordered)?)
 }
 
-async fn store_metrics(
+async fn store_metrics<R: Runtime>(
     pool: &SqlitePool,
     server_id: &str,
     metrics: Vec<RawMetric>,
     derived_engine: &mut DerivedMetricsEngine,
+    alert_engine: &Arc<Mutex<AlertEngine>>,
+    notifier: &AlertNotifier<R>,
 ) -> AppResult<()> {
     let mut series = HashSet::new();
     let mut time_range = (i64::MAX, i64::MIN);
+    let mut metric_values: Vec<(String, f64)> = Vec::new();
 
     for metric in derived_engine.process_metrics(metrics) {
         time_range.0 = time_range.0.min(metric.timestamp);
         time_range.1 = time_range.1.max(metric.timestamp);
         let labels = labels_json(&metric)?;
         series.insert((metric.key.clone(), labels.clone()));
+        metric_values.push((metric.key.clone(), metric.value));
         sqlx::query("INSERT INTO raw_metrics (server_id, key, value, metric_type, vantage_point, timestamp, labels) VALUES (?, ?, ?, ?, ?, ?, ?)")
             .bind(server_id)
             .bind(&metric.key)
@@ -157,6 +222,26 @@ async fn store_metrics(
             .bind(labels)
             .execute(pool)
             .await?;
+    }
+
+    // Evaluate alert rules against incoming metrics
+    {
+        let mut engine = alert_engine.lock().await;
+        for (key, value) in &metric_values {
+            let events = engine.evaluate(key, *value);
+            for event in &events {
+                if let Err(e) = persist_alert_event(pool, event).await {
+                    log::error!("Failed to persist alert event: {e}");
+                }
+                let notify_result = match event.status {
+                    AlertStatus::Firing => notifier.send_alert(event),
+                    AlertStatus::Resolved => notifier.send_recovery(event),
+                };
+                if let Err(e) = notify_result {
+                    log::error!("Failed to send alert notification: {e}");
+                }
+            }
+        }
     }
 
     if time_range.0 == i64::MAX || time_range.1 == i64::MIN {

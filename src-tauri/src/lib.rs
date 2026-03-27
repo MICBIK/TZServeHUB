@@ -8,7 +8,9 @@ mod probes;
 mod scheduler;
 mod storage;
 
+use std::sync::Arc;
 use tauri::Manager;
+use tokio::sync::Mutex;
 
 fn configure_builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder
@@ -26,7 +28,14 @@ fn configure_builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
             tauri::async_runtime::block_on(async {
                 let pool = storage::database::init().await?;
                 app.manage(pool.clone());
-                scheduler::poller::start(pool.clone()).await?;
+
+                // Create shared AlertEngine and load existing rules
+                let alert_engine = Arc::new(Mutex::new(alerts::rules::AlertEngine::new()));
+                commands::alerts::load_rules_into_engine(&pool, &alert_engine).await?;
+                app.manage(alert_engine.clone());
+
+                scheduler::poller::start(pool.clone(), alert_engine, app.handle().clone()).await?;
+                scheduler::probe_scheduler::start(pool.clone()).await;
                 storage::retention::start(pool.clone()).await;
                 Ok::<(), Box<dyn std::error::Error>>(())
             })?;
@@ -37,10 +46,20 @@ fn configure_builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
             commands::server::list_servers,
             commands::server::add_server,
             commands::server::remove_server,
+            commands::server::get_server_health_summary,
             commands::metrics::get_metrics,
             commands::metrics::get_metric_history,
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::alerts::list_alert_rules,
+            commands::alerts::add_alert_rule,
+            commands::alerts::remove_alert_rule,
+            commands::alerts::list_alert_events,
+            commands::probes::run_ping_probe,
+            commands::probes::run_tcp_probe,
+            commands::probes::run_dns_probe,
+            commands::probes::get_probe_history,
+            commands::probes::get_latest_probe_results,
         ])
 }
 

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +21,25 @@ pub enum AlertCondition {
     Eq,
 }
 
+impl AlertCondition {
+    pub fn from_db(value: &str) -> Self {
+        match value {
+            "gt" => AlertCondition::Gt,
+            "lt" => AlertCondition::Lt,
+            "eq" => AlertCondition::Eq,
+            _ => AlertCondition::Gt,
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            AlertCondition::Gt => "gt",
+            AlertCondition::Lt => "lt",
+            AlertCondition::Eq => "eq",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertEvent {
     pub id: String,
@@ -39,4 +56,21 @@ pub struct AlertEvent {
 pub enum AlertStatus {
     Firing,
     Resolved,
+}
+
+impl AlertStatus {
+    pub fn from_db(value: &str) -> Self {
+        match value {
+            "firing" => AlertStatus::Firing,
+            "resolved" => AlertStatus::Resolved,
+            _ => AlertStatus::Firing,
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            AlertStatus::Firing => "firing",
+            AlertStatus::Resolved => "resolved",
+        }
+    }
 }

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::models::alert::{AlertCondition, AlertEvent, AlertRule, AlertStatus};
 use chrono::Utc;
 use std::collections::HashMap;

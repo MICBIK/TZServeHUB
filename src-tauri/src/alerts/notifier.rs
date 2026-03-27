@@ -1,16 +1,22 @@
-#![allow(dead_code)]
-
 use crate::error::AppResult;
 use crate::models::alert::AlertEvent;
-use tauri::AppHandle;
+use tauri::{AppHandle, Runtime};
 use tauri_plugin_notification::NotificationExt;
 
-pub struct AlertNotifier {
-    app: AppHandle,
+pub struct AlertNotifier<R: Runtime> {
+    app: AppHandle<R>,
 }
 
-impl AlertNotifier {
-    pub fn new(app: AppHandle) -> Self {
+impl<R: Runtime> Clone for AlertNotifier<R> {
+    fn clone(&self) -> Self {
+        Self {
+            app: self.app.clone(),
+        }
+    }
+}
+
+impl<R: Runtime> AlertNotifier<R> {
+    pub fn new(app: AppHandle<R>) -> Self {
         Self { app }
     }
 

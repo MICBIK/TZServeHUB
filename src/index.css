@@ -695,6 +695,20 @@ a {
   box-shadow: 0 0 18px rgba(65, 215, 159, 0.52);
 }
 
+.server-card-dot.is-error {
+  background: var(--danger-text);
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.52);
+}
+
+.shell-live-pill.is-error .shell-live-pill-dot {
+  background: var(--danger-text);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.52);
+}
+
+.server-card-status.is-error {
+  color: var(--danger-text);
+}
+
 .server-card {
   border-color: var(--surface-border);
   background: var(--surface-muted);
@@ -2321,6 +2335,28 @@ body {
 .ops-network-cell {
   display: grid;
   gap: 0.3rem;
+}
+
+.ops-fleet-cell {
+  border-radius: 6px;
+  padding: 2px 4px;
+  transition: background 0.2s ease;
+}
+
+.ops-fleet-cell.is-warn {
+  background: rgba(250, 204, 21, 0.12);
+}
+
+.ops-fleet-cell.is-danger {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.ops-fleet-cell.is-warn .ops-meter-fill {
+  background: var(--accent-soft, #facc15);
+}
+
+.ops-fleet-cell.is-danger .ops-meter-fill {
+  background: var(--danger, #ef4444);
 }
 
 .ops-detail-meta {

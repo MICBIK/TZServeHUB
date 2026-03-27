@@ -1,5 +1,5 @@
 import type { MetricHistoryResponse, MetricPoint } from '../types/metric';
-import type { ServerConfig, ServerFormData } from '../types/server';
+import type { HealthSummary, ServerConfig, ServerFormData } from '../types/server';
 
 export type BrowserThemeMode = 'dark' | 'light';
 export type BrowserLanguageMode = 'zh-CN' | 'en-US';
@@ -58,6 +58,9 @@ function createBaseServer(name: string, host: string, port: number): ServerConfi
     enabled: true,
     auth_token: null,
     auth_type: 'none',
+    status: 'online',
+    last_seen_at: Math.floor(Date.now() / 1000),
+    last_error: null,
     created_at: 0,
     updated_at: 0,
   };
@@ -240,8 +243,90 @@ function getCurrentMetrics(serverId: string): MetricPoint[] {
   ];
 }
 
+// Probe history demo data (from WT4)
+
+interface DemoProbeResult {
+  id: number;
+  server_id: string;
+  probe_type: string;
+  target: string;
+  success: boolean;
+  latency_ms: number | null;
+  loss_rate: number | null;
+  error_message: string | null;
+  timestamp: number;
+}
+
+function createProbeHistory(serverId: string, probeType: string, from: number, to: number): DemoProbeResult[] {
+  const seed = seedOf(serverId + probeType);
+  const results: DemoProbeResult[] = [];
+  const step = 60;
+  let id = 1;
+
+  for (let ts = from; ts <= to; ts += step) {
+    const index = (ts - from) / step;
+    if (probeType === 'ping') {
+      const latency = clamp(wave(index, seed, 12 + (seed % 8), 4, 3.2), 1, 80);
+      const loss = Math.random() < 0.05 ? clamp(wave(index, seed + 3, 25, 10, 4), 0, 100) : 0;
+      results.push({
+        id: id++,
+        server_id: serverId,
+        probe_type: 'ping',
+        target: readState().servers.find((s) => s.id === serverId)?.host ?? '10.10.0.12',
+        success: loss < 100,
+        latency_ms: latency,
+        loss_rate: loss,
+        error_message: null,
+        timestamp: ts,
+      });
+    } else if (probeType === 'tcp') {
+      const latency = clamp(wave(index, seed + 7, 8 + (seed % 5), 3, 2.8), 1, 60);
+      const success = Math.random() > 0.02;
+      results.push({
+        id: id++,
+        server_id: serverId,
+        probe_type: 'tcp',
+        target: `${readState().servers.find((s) => s.id === serverId)?.host ?? '10.10.0.12'}:9100`,
+        success,
+        latency_ms: success ? latency : null,
+        loss_rate: null,
+        error_message: success ? null : 'Connection timed out',
+        timestamp: ts,
+      });
+    } else if (probeType === 'dns') {
+      const latency = clamp(wave(index, seed + 13, 18 + (seed % 10), 6, 3.5), 2, 120);
+      const success = Math.random() > 0.01;
+      results.push({
+        id: id++,
+        server_id: serverId,
+        probe_type: 'dns',
+        target: readState().servers.find((s) => s.id === serverId)?.host ?? '10.10.0.12',
+        success,
+        latency_ms: success ? latency : null,
+        loss_rate: null,
+        error_message: success ? null : 'DNS resolution failed',
+        timestamp: ts,
+      });
+    }
+  }
+
+  return results;
+}
+
+// Exported demo functions
+
 export async function demoListServers() {
   return readState().servers;
+}
+
+export async function demoGetServerHealthSummary(): Promise<HealthSummary> {
+  const servers = readState().servers.filter((s) => s.enabled);
+  return {
+    online: servers.filter((s) => s.status === 'online').length,
+    offline: 0,
+    error: servers.filter((s) => s.status === 'error').length,
+    unknown: servers.filter((s) => s.status === 'unknown').length,
+  };
 }
 
 export async function demoAddServer(input: ServerFormData) {
@@ -260,6 +345,9 @@ export async function demoAddServer(input: ServerFormData) {
     ssh_key_path: input.ssh_key ?? null,
     ssh_passphrase: input.ssh_passphrase ?? null,
     password: input.password ?? null,
+    status: 'unknown',
+    last_seen_at: null,
+    last_error: null,
     created_at: 0,
     updated_at: 0,
   });
@@ -293,6 +381,26 @@ export async function demoGetMetricHistory(
     resolution: 'raw',
     points: history,
   };
+}
+
+export async function demoGetProbeHistory(
+  serverId: string,
+  probeType: string,
+  from: number,
+  to: number,
+): Promise<DemoProbeResult[]> {
+  return createProbeHistory(serverId, probeType, from, to);
+}
+
+export async function demoGetLatestProbeResults(
+  serverId: string,
+): Promise<DemoProbeResult[]> {
+  const now = Math.floor(Date.now() / 1000);
+  const types = ['ping', 'tcp', 'dns'];
+  return types.map((probeType) => {
+    const history = createProbeHistory(serverId, probeType, now - 60, now);
+    return history[history.length - 1];
+  }).filter(Boolean);
 }
 
 export async function demoGetSettings() {

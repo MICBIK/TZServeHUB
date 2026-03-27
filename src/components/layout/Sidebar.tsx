@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import ServerCard from '../server/ServerCard';
 import { useServerStore } from '../../stores/serverStore';
@@ -49,9 +49,18 @@ const Sidebar: React.FC<SidebarProps> = ({ bootstrapped, mode = 'desktop', onClo
   const servers = useServerStore((state) => state.servers);
   const activeServerId = useServerStore((state) => state.activeServerId);
   const setActiveServer = useServerStore((state) => state.setActiveServer);
+  const refreshServerStatus = useServerStore((state) => state.refreshServerStatus);
   const { t } = useUiCopy();
-  const onlineTargets = servers.filter((server) => server.enabled).length;
+  const onlineTargets = servers.filter((server) => server.status === 'online').length;
   const isDrawer = mode === 'drawer';
+
+  useEffect(() => {
+    if (!bootstrapped) return;
+    const handle = setInterval(() => {
+      refreshServerStatus();
+    }, 10_000);
+    return () => clearInterval(handle);
+  }, [bootstrapped, refreshServerStatus]);
 
   return (
     <aside

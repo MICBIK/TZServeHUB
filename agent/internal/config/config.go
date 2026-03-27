@@ -15,7 +15,7 @@ type Config struct {
 
 func Load(path string) (*Config, error) {
 	cfg := &Config{
-		Port:     9200,
+		Port:     9100,
 		Interval: 5,
 	}
 
@@ -23,6 +23,7 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		// Use defaults if no config file
 		if os.IsNotExist(err) {
+			cfg.Hostname, _ = os.Hostname()
 			return cfg, nil
 		}
 		return nil, err

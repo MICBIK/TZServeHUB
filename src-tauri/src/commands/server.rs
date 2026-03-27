@@ -1,5 +1,6 @@
 use crate::error::{AppError, AppResult};
 use crate::models::server::{AccessMethod, AdapterType, AuthType, ServerConfig};
+use serde::Serialize;
 use sqlx::{Row, SqlitePool};
 use tauri::State;
 
@@ -18,6 +19,9 @@ fn row_to_server(row: &sqlx::sqlite::SqliteRow) -> ServerConfig {
         ssh_key_path: row.get("ssh_key_path"),
         ssh_passphrase: row.get("ssh_passphrase"),
         password: row.get("password"),
+        status: row.get("status"),
+        last_seen_at: row.get("last_seen_at"),
+        last_error: row.get("last_error"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
@@ -27,7 +31,7 @@ fn row_to_server(row: &sqlx::sqlite::SqliteRow) -> ServerConfig {
 pub async fn list_servers(pool: State<'_, SqlitePool>) -> Result<Vec<ServerConfig>, String> {
     let result: AppResult<Vec<ServerConfig>> = async {
         let rows = sqlx::query(
-            "SELECT id, name, host, port, adapter_type, access_method, polling_interval_sec, enabled, auth_token, auth_type, ssh_key_path, ssh_passphrase, password, created_at, updated_at FROM servers ORDER BY created_at DESC",
+            "SELECT id, name, host, port, adapter_type, access_method, polling_interval_sec, enabled, auth_token, auth_type, ssh_key_path, ssh_passphrase, password, status, last_seen_at, last_error, created_at, updated_at FROM servers ORDER BY created_at DESC",
         )
         .fetch_all(pool.inner())
         .await?;
@@ -79,6 +83,9 @@ pub async fn add_server(
             ssh_key_path: ssh_key_path.filter(|s| !s.trim().is_empty()),
             ssh_passphrase: ssh_passphrase.filter(|s| !s.trim().is_empty()),
             password: password.filter(|s| !s.trim().is_empty()),
+            status: "unknown".to_string(),
+            last_seen_at: None,
+            last_error: None,
             created_at: chrono::Utc::now().timestamp(),
             updated_at: chrono::Utc::now().timestamp(),
         };
@@ -124,6 +131,62 @@ pub async fn remove_server(pool: State<'_, SqlitePool>, id: String) -> Result<()
             .await?;
 
         Ok(())
+    }
+    .await;
+
+    result.map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Serialize)]
+pub struct HealthSummary {
+    pub online: u32,
+    pub offline: u32,
+    pub error: u32,
+    pub unknown: u32,
+}
+
+#[tauri::command]
+pub async fn get_server_health_summary(
+    pool: State<'_, SqlitePool>,
+) -> Result<HealthSummary, String> {
+    let result: AppResult<HealthSummary> = async {
+        let rows = sqlx::query(
+            "SELECT status, last_seen_at, polling_interval_sec FROM servers WHERE enabled = 1",
+        )
+        .fetch_all(pool.inner())
+        .await?;
+
+        let now = chrono::Utc::now().timestamp();
+        let mut summary = HealthSummary {
+            online: 0,
+            offline: 0,
+            error: 0,
+            unknown: 0,
+        };
+
+        for row in &rows {
+            let status: String = row.get("status");
+            let last_seen_at: Option<i64> = row.get("last_seen_at");
+            let polling_interval_sec = row.get::<i64, _>("polling_interval_sec") as i64;
+
+            match status.as_str() {
+                "online" => {
+                    if let Some(seen) = last_seen_at {
+                        if now - seen > polling_interval_sec * 3 {
+                            summary.offline += 1;
+                        } else {
+                            summary.online += 1;
+                        }
+                    } else {
+                        summary.online += 1;
+                    }
+                }
+                "error" => summary.error += 1,
+                _ => summary.unknown += 1,
+            }
+        }
+
+        Ok(summary)
     }
     .await;
 

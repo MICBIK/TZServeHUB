@@ -1,8 +1,11 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Line, LineChart, ResponsiveContainer } from 'recharts';
+import MetricCard from '../components/common/MetricCard';
 import StatePanel from '../components/common/StatePanel';
 import { useMetricHistory } from '../hooks/useMetricHistory';
 import { useAllServersMetrics } from '../hooks/useAllServersMetrics';
+import type { ServerMetrics } from '../hooks/useAllServersMetrics';
 import { useUiCopy } from '../hooks/useUiCopy';
 import { mergeHistorySeries, latestMetricTimestamp } from '../lib/chartData';
 import { formatBytes, formatBytesPerSec, formatPercent } from '../lib/formatters';
@@ -114,6 +117,47 @@ function MemoryRing({ value, compact = false }: { value: number; compact?: boole
   );
 }
 
+function useFleetHealth(serversMetrics: ServerMetrics[]) {
+  return useMemo(() => {
+    let cpuCritical = 0;
+    let memCritical = 0;
+    let diskCritical = 0;
+    const perServer: Array<{ serverId: string; cpu: number; mem: number; maxDisk: number }> = [];
+
+    for (const { server, metrics } of serversMetrics) {
+      if (metrics.length === 0) continue;
+      const cpu = getCpuMetrics(metrics).total?.value ?? 0;
+      const mem = getMemoryMetric(metrics)?.value ?? 0;
+      const disks = getDiskUsage(metrics);
+      const maxDisk = disks.reduce((max, d) => Math.max(max, d.percent), 0);
+
+      if (cpu > 90) cpuCritical++;
+      if (mem > 85) memCritical++;
+      if (maxDisk > 90) diskCritical++;
+      perServer.push({ serverId: server.id, cpu, mem, maxDisk });
+    }
+
+    return { cpuCritical, memCritical, diskCritical, perServer };
+  }, [serversMetrics]);
+}
+
+function cpuToneClass(value: number) {
+  if (value > 90) return 'is-danger';
+  if (value > 75) return 'is-warn';
+  return '';
+}
+
+function memToneClass(value: number) {
+  if (value > 85) return 'is-danger';
+  if (value > 70) return 'is-warn';
+  return '';
+}
+
+function diskAlertToneClass(value: number) {
+  if (value > 90) return 'is-danger';
+  return '';
+}
+
 export default function DashboardPage() {
   const servers = useServerStore((state) => state.servers);
   const activeServerId = useServerStore((state) => state.activeServerId);
@@ -122,6 +166,7 @@ export default function DashboardPage() {
   const setActiveServer = useServerStore((state) => state.setActiveServer);
   const serversMetrics = useAllServersMetrics();
   const { t } = useUiCopy();
+  const fleet = useFleetHealth(serversMetrics);
 
   const onlineCount = serversMetrics.filter((item) => item.server.enabled && item.metrics.length > 0).length;
   const offlineCount = Math.max(servers.length - onlineCount, 0);
@@ -205,6 +250,40 @@ export default function DashboardPage() {
           </div>
         </section>
 
+        {servers.length > 0 && (
+          <section className="glass-panel rounded-[24px] border p-4">
+            <div className="summary-panel-header">
+              <div>
+                <p className="panel-label">{t('fleet_health')}</p>
+                <p className="shell-muted mt-1 text-sm">{t('fleet_health_desc')}</p>
+              </div>
+            </div>
+            <div className="fleet-health-cards mt-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+              <MetricCard title={t('server_count_total')} value={servers.length} unit={t('server_count_online') + ': ' + onlineCount} />
+              <MetricCard
+                title={t('fleet_cpu_critical')}
+                value={fleet.cpuCritical}
+                trend={fleet.cpuCritical > 0 ? 'up' : 'neutral'}
+              />
+              <MetricCard
+                title={t('fleet_mem_critical')}
+                value={fleet.memCritical}
+                trend={fleet.memCritical > 0 ? 'up' : 'neutral'}
+              />
+              <MetricCard
+                title={t('fleet_disk_critical')}
+                value={fleet.diskCritical}
+                trend={fleet.diskCritical > 0 ? 'up' : 'neutral'}
+              />
+            </div>
+            {fleet.cpuCritical === 0 && fleet.memCritical === 0 && fleet.diskCritical === 0 && onlineCount > 0 && (
+              <p className="shell-muted mt-2 text-sm" style={{ color: 'var(--success, #4ade80)' }}>
+                {t('fleet_all_healthy')}
+              </p>
+            )}
+          </section>
+        )}
+
         {!hydrated ? (
           <StatePanel eyebrow={t('status_loading')} title={t('loading_title')} description={t('loading_desc')} />
         ) : serverError ? (
@@ -242,7 +321,9 @@ export default function DashboardPage() {
                   {serversMetrics.map(({ server, metrics }) => {
                     const cpu = getCpuMetrics(metrics).total?.value ?? 0;
                     const memory = getMemoryMetric(metrics)?.value ?? 0;
-                    const disk = getDiskUsage(metrics)[0]?.percent ?? 0;
+                    const disks = getDiskUsage(metrics);
+                    const disk = disks[0]?.percent ?? 0;
+                    const maxDisk = disks.reduce((max, d) => Math.max(max, d.percent), 0);
                     const network = [...getNetworkRates(metrics)].sort(
                       (left, right) => (right.rx ?? 0) + (right.tx ?? 0) - ((left.rx ?? 0) + (left.tx ?? 0)),
                     )[0];
@@ -261,9 +342,15 @@ export default function DashboardPage() {
                             <small>{server.host}:{server.port}</small>
                           </span>
                         </span>
-                        <MetricMeter value={cpu} label={t(getAdapterLabelKey(server.adapter_type))} />
-                        <MetricMeter value={memory} label={t(getAccessMethodLabelKey(server.access_method))} />
-                        <MetricMeter value={disk} label={getDiskUsage(metrics)[0]?.label ?? '--'} />
+                        <div className={`ops-fleet-cell ${cpuToneClass(cpu)}`}>
+                          <MetricMeter value={cpu} label={t(getAdapterLabelKey(server.adapter_type))} />
+                        </div>
+                        <div className={`ops-fleet-cell ${memToneClass(memory)}`}>
+                          <MetricMeter value={memory} label={t(getAccessMethodLabelKey(server.access_method))} />
+                        </div>
+                        <div className={`ops-fleet-cell ${diskAlertToneClass(maxDisk)}`}>
+                          <MetricMeter value={disk} label={disks[0]?.label ?? '--'} />
+                        </div>
                         <div className="ops-network-cell">
                           <strong>{network?.rx ? formatBytesPerSec(network.rx) : '--'}</strong>
                           <span>{network?.tx ? formatBytesPerSec(network.tx) : '--'}</span>
