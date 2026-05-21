@@ -1,6 +1,6 @@
 //! Secret storage abstraction.
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use async_trait::async_trait;
 
 /// Abstract backend for sensitive string storage.
@@ -11,6 +11,51 @@ pub trait SecretStore: Send + Sync {
     async fn put(&self, key: &str, value: &str) -> AppResult<()>;
     async fn get(&self, key: &str) -> AppResult<Option<String>>;
     async fn delete(&self, key: &str) -> AppResult<()>;
+}
+
+/// OS-native keychain implementation backed by the `keyring` crate.
+pub struct OsKeychainStore {
+    service: String,
+}
+
+impl OsKeychainStore {
+    pub fn new(service: impl Into<String>) -> Self {
+        Self {
+            service: service.into(),
+        }
+    }
+
+    fn entry(&self, key: &str) -> AppResult<keyring::Entry> {
+        keyring::Entry::new(&self.service, key).map_err(keyring_to_app_error)
+    }
+}
+
+#[async_trait]
+impl SecretStore for OsKeychainStore {
+    async fn put(&self, key: &str, value: &str) -> AppResult<()> {
+        self.entry(key)?
+            .set_password(value)
+            .map_err(keyring_to_app_error)
+    }
+
+    async fn get(&self, key: &str) -> AppResult<Option<String>> {
+        match self.entry(key)?.get_password() {
+            Ok(value) => Ok(Some(value)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(error) => Err(keyring_to_app_error(error)),
+        }
+    }
+
+    async fn delete(&self, key: &str) -> AppResult<()> {
+        match self.entry(key)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(error) => Err(keyring_to_app_error(error)),
+        }
+    }
+}
+
+fn keyring_to_app_error(error: keyring::Error) -> AppError {
+    AppError::Custom(format!("Keychain error: {error}"))
 }
 
 #[cfg(test)]
