@@ -61,6 +61,8 @@ fn configure_builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
             commands::probes::run_dns_probe,
             commands::probes::get_probe_history,
             commands::probes::get_latest_probe_results,
+            commands::known_hosts::list_known_hosts,
+            commands::known_hosts::remove_known_host,
         ])
 }
 
