@@ -115,4 +115,13 @@ describe('SettingsPage known hosts', () => {
       expect(listKnownHostsMock).toHaveBeenCalledTimes(2);
     });
   });
+
+  it('should_show_keychain_lock_icon_per_server (KEY-010)', async () => {
+    renderPage();
+
+    const keychainStatus = await screen.findByTestId('server-keychain-status-srv-1');
+    expect(keychainStatus).toHaveAttribute('aria-label', 'Stored in macOS Keychain');
+    expect(keychainStatus).toHaveAttribute('title', 'Stored in macOS Keychain');
+    expect(keychainStatus.querySelector('svg')).toBeInTheDocument();
+  });
 });
