@@ -1,5 +1,12 @@
 use crate::error::{AppError, AppResult};
 use crate::models::server::{AccessMethod, AdapterType, AuthType, ServerConfig};
+use crate::storage::{
+    database::resolve_app_data_dir,
+    secrets::{
+        factory::{SecretStoreFactory, SecretStoreFactoryConfig},
+        has_server_secret_refs, remove_server_secrets,
+    },
+};
 use serde::Serialize;
 use sqlx::{Row, SqlitePool};
 use tauri::State;
@@ -121,8 +128,18 @@ pub async fn add_server(
 #[tauri::command]
 pub async fn remove_server(pool: State<'_, SqlitePool>, id: String) -> Result<(), String> {
     let result: AppResult<()> = async {
-        if id.trim().is_empty() {
+        let id = id.trim().to_string();
+        if id.is_empty() {
             return Err(AppError::Custom("Server ID cannot be empty".to_string()));
+        }
+
+        if has_server_secret_refs(pool.inner(), &id).await? {
+            let created_store = SecretStoreFactory::create(SecretStoreFactoryConfig::new(
+                "serverhub",
+                resolve_app_data_dir()?,
+            ))
+            .await?;
+            remove_server_secrets(pool.inner(), created_store.store().as_ref(), &id).await?;
         }
 
         sqlx::query("DELETE FROM servers WHERE id = ?")

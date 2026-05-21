@@ -1,3 +1,5 @@
+use crate::error::AppResult;
+use crate::storage::secrets::{secret_key_for_server_field, SecretStore};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +51,27 @@ pub struct ServerConfig {
     pub last_error: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+#[allow(dead_code)]
+impl ServerConfig {
+    pub async fn get_auth_token(&self, store: &dyn SecretStore) -> AppResult<Option<String>> {
+        store
+            .get(&secret_key_for_server_field(&self.id, "auth_token"))
+            .await
+    }
+
+    pub async fn get_ssh_passphrase(&self, store: &dyn SecretStore) -> AppResult<Option<String>> {
+        store
+            .get(&secret_key_for_server_field(&self.id, "ssh_passphrase"))
+            .await
+    }
+
+    pub async fn get_password(&self, store: &dyn SecretStore) -> AppResult<Option<String>> {
+        store
+            .get(&secret_key_for_server_field(&self.id, "password"))
+            .await
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

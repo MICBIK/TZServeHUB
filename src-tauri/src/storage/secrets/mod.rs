@@ -62,6 +62,14 @@ fn keyring_to_app_error(error: keyring::Error) -> AppError {
     AppError::Custom(format!("Keychain error: {error}"))
 }
 
+pub fn redact_secret_from_error(message: &str, secret: &str) -> String {
+    if secret.is_empty() {
+        return message.to_string();
+    }
+
+    message.replace(secret, "[redacted]")
+}
+
 pub async fn has_legacy_plaintext_credentials(pool: &SqlitePool) -> AppResult<bool> {
     let count: i64 = sqlx::query_scalar(
         r#"
@@ -76,6 +84,39 @@ pub async fn has_legacy_plaintext_credentials(pool: &SqlitePool) -> AppResult<bo
     .await?;
 
     Ok(count > 0)
+}
+
+pub async fn has_server_secret_refs(pool: &SqlitePool, server_id: &str) -> AppResult<bool> {
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM secret_refs WHERE server_id = ?")
+            .bind(server_id)
+            .fetch_one(pool)
+            .await?;
+
+    Ok(count > 0)
+}
+
+pub async fn remove_server_secrets(
+    pool: &SqlitePool,
+    store: &dyn SecretStore,
+    server_id: &str,
+) -> AppResult<()> {
+    let rows = sqlx::query("SELECT secret_key FROM secret_refs WHERE server_id = ?")
+        .bind(server_id)
+        .fetch_all(pool)
+        .await?;
+
+    for row in &rows {
+        let secret_key: String = row.get("secret_key");
+        store.delete(&secret_key).await?;
+    }
+
+    sqlx::query("DELETE FROM secret_refs WHERE server_id = ?")
+        .bind(server_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
 }
 
 /// Migrate legacy plaintext credentials from `servers` into a SecretStore.
@@ -160,13 +201,13 @@ pub async fn migrate_legacy_plaintext_to_keychain(
     Ok(())
 }
 
-fn secret_key_for_server_field(server_id: &str, field: &str) -> String {
+pub fn secret_key_for_server_field(server_id: &str, field: &str) -> String {
     format!("serverhub.server.{server_id}.{field}")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::SecretStore;
+    use super::{redact_secret_from_error, SecretStore};
     use crate::error::AppResult;
     use async_trait::async_trait;
 
