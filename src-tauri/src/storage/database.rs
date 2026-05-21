@@ -27,6 +27,22 @@ impl Database {
 
         sqlx::migrate!("./migrations").run(&pool).await?;
 
+        if crate::storage::secrets::has_legacy_plaintext_credentials(&pool).await? {
+            let created_store =
+                crate::storage::secrets::factory::SecretStoreFactory::create(
+                    crate::storage::secrets::factory::SecretStoreFactoryConfig::new(
+                        "serverhub",
+                        app_data_dir.clone(),
+                    ),
+                )
+                .await?;
+            crate::storage::secrets::migrate_legacy_plaintext_to_keychain(
+                &pool,
+                created_store.store().as_ref(),
+            )
+            .await?;
+        }
+
         Ok(pool)
     }
 
