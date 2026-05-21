@@ -205,4 +205,16 @@ mod tests {
             .await
             .expect("delete should return AppResult");
     }
+
+    /// KEY-008: error messages crossing logs / IPC must not contain secret values.
+    #[test]
+    fn secrets_never_appear_in_error_messages() {
+        let message = redact_secret_from_error(
+            "failed to store credential secret-value for server",
+            "secret-value",
+        );
+
+        assert!(!message.contains("secret-value"));
+        assert!(message.contains("[redacted]"));
+    }
 }
