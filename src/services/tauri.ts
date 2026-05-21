@@ -112,6 +112,15 @@ export interface AppSettings {
   language: LanguageMode;
 }
 
+export interface KnownHost {
+  host: string;
+  port: number;
+  fingerprint: string;
+  algorithm: string;
+  first_seen: number;
+  last_seen: number;
+}
+
 export async function getSettings(): Promise<AppSettings> {
   if (!hasTauriInvoke()) {
     return demoGetSettings();
@@ -126,6 +135,22 @@ export async function updateSettings(settings: AppSettings): Promise<AppSettings
   }
 
   return invoke('update_settings', { settings });
+}
+
+export async function listKnownHosts(): Promise<KnownHost[]> {
+  if (!hasTauriInvoke()) {
+    return [];
+  }
+
+  return invoke('list_known_hosts');
+}
+
+export async function removeKnownHost(host: string, port: number): Promise<void> {
+  if (!hasTauriInvoke()) {
+    return;
+  }
+
+  return invoke('remove_known_host', { host, port });
 }
 
 // Probe commands (on-demand)

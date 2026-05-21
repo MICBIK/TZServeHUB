@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import ServerCard from '../components/server/ServerCard';
+import KnownHostsList from '../components/settings/KnownHostsList';
 import StatePanel from '../components/common/StatePanel';
 import { useUiCopy } from '../hooks/useUiCopy';
 import { POLLING_INTERVALS } from '../lib/constants';
@@ -497,6 +498,8 @@ export default function SettingsPage() {
             </div>
           </section>
         </div>
+
+        <KnownHostsList />
       </div>
     </div>
   );
