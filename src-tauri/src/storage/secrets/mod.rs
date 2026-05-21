@@ -1,5 +1,8 @@
 //! Secret storage abstraction.
 
+pub mod encrypted_file;
+pub mod factory;
+
 use crate::error::{AppError, AppResult};
 use async_trait::async_trait;
 
