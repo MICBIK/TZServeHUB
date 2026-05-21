@@ -62,3 +62,7 @@ rand = "0.8"
 
 # SHA-256 host key fingerprints
 sha2 = "0.10"
+
+# SSH host key verification
+russh = "0.46"
+russh-keys = "0.46"

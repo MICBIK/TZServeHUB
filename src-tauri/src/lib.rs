@@ -1,7 +1,7 @@
 mod adapters;
 mod alerts;
 mod commands;
-mod deployer;
+pub mod deployer;
 mod error;
 mod metrics;
 mod models;
