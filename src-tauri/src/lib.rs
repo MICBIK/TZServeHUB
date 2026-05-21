@@ -1,6 +1,7 @@
 mod adapters;
 mod alerts;
 mod commands;
+mod deployer;
 mod error;
 mod metrics;
 mod models;
