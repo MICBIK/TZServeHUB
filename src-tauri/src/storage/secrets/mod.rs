@@ -1,5 +1,18 @@
 //! Secret storage abstraction.
 
+use crate::error::AppResult;
+use async_trait::async_trait;
+
+/// Abstract backend for sensitive string storage.
+///
+/// Secret keys should use the `serverhub.<scope>.<id>.<field>` namespace.
+#[async_trait]
+pub trait SecretStore: Send + Sync {
+    async fn put(&self, key: &str, value: &str) -> AppResult<()>;
+    async fn get(&self, key: &str) -> AppResult<Option<String>>;
+    async fn delete(&self, key: &str) -> AppResult<()>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::SecretStore;
