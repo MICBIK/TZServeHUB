@@ -1,9 +1,11 @@
 //! Secret store factory with OS keychain fallback behavior.
 
-use super::SecretStore;
+use super::{encrypted_file::EncryptedFileStore, OsKeychainStore, SecretStore};
 use crate::error::AppResult;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+const FALLBACK_WARNING: &str = "OS keychain unavailable, using encrypted file fallback";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SecretStoreBackend {
@@ -56,8 +58,30 @@ impl CreatedSecretStore {
 pub struct SecretStoreFactory;
 
 impl SecretStoreFactory {
-    pub async fn create(_config: SecretStoreFactoryConfig) -> AppResult<CreatedSecretStore> {
-        todo!("KEY-005: implement fallback factory")
+    pub async fn create(config: SecretStoreFactoryConfig) -> AppResult<CreatedSecretStore> {
+        if !config.force_keychain_unavailable {
+            let keychain = Arc::new(OsKeychainStore::new(config.service));
+            if Self::probe_keychain(keychain.as_ref()).await.is_ok() {
+                return Ok(CreatedSecretStore {
+                    store: keychain,
+                    backend: SecretStoreBackend::OsKeychain,
+                    warning: None,
+                });
+            }
+        }
+
+        log::warn!("{FALLBACK_WARNING}");
+        Ok(CreatedSecretStore {
+            store: Arc::new(EncryptedFileStore::new(config.data_dir)),
+            backend: SecretStoreBackend::EncryptedFile,
+            warning: Some(FALLBACK_WARNING.to_string()),
+        })
+    }
+
+    async fn probe_keychain(store: &dyn SecretStore) -> AppResult<()> {
+        let key = format!("serverhub.probe.{}.availability", std::process::id());
+        store.put(&key, "ok").await?;
+        store.delete(&key).await
     }
 }
 
