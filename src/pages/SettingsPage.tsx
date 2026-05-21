@@ -60,6 +60,21 @@ function DeleteIcon() {
   );
 }
 
+function KeychainLockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M7.75 10.25V8a4.25 4.25 0 0 1 8.5 0v2.25M6.75 10.25h10.5a1.75 1.75 0 0 1 1.75 1.75v6a1.75 1.75 0 0 1-1.75 1.75H6.75A1.75 1.75 0 0 1 5 18v-6a1.75 1.75 0 0 1 1.75-1.75ZM12 14v2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function SaveIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -315,6 +330,14 @@ export default function SettingsPage() {
                         onClick={() => setActiveServer(server.id)}
                       />
                       <div className="target-shell-card-actions">
+                        <span
+                          className="app-button app-button-quiet app-button-sm"
+                          data-testid={`server-keychain-status-${server.id}`}
+                          aria-label="Stored in macOS Keychain"
+                          title="Stored in macOS Keychain"
+                        >
+                          <KeychainLockIcon />
+                        </span>
                         <button
                           type="button"
                           className="app-button app-button-danger"
