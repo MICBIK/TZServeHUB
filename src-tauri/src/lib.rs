@@ -6,7 +6,7 @@ mod metrics;
 mod models;
 mod probes;
 mod scheduler;
-mod storage;
+pub mod storage;
 
 use std::sync::Arc;
 use tauri::Manager;
