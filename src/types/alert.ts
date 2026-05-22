@@ -18,4 +18,5 @@ export interface AlertEvent {
   message: string;
   fired_at: number;
   resolved_at: number | null;
+  delivery_status?: string | null;
 }

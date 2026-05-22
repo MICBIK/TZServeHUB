@@ -48,12 +48,12 @@ pub async fn start<R: Runtime>(
     Ok(())
 }
 
-fn reconcile_polling_tasks<R: Runtime>(
+fn reconcile_polling_tasks(
     pool: &SqlitePool,
     servers: Vec<ServerConfig>,
     tasks: &mut HashMap<String, tokio::task::JoinHandle<()>>,
     alert_engine: &Arc<Mutex<AlertEngine>>,
-    notifier: &AlertNotifier<R>,
+    notifier: &AlertNotifier,
 ) {
     let current_ids: HashSet<String> = servers.iter().map(|server| server.id.clone()).collect();
     tasks.retain(|server_id, handle| {
@@ -112,11 +112,11 @@ async fn get_enabled_servers(pool: &SqlitePool) -> AppResult<Vec<ServerConfig>> 
     Ok(rows.iter().map(row_to_server).collect())
 }
 
-async fn poll_server_loop<R: Runtime>(
+async fn poll_server_loop(
     pool: SqlitePool,
     server: ServerConfig,
     alert_engine: Arc<Mutex<AlertEngine>>,
-    notifier: AlertNotifier<R>,
+    notifier: AlertNotifier,
 ) {
     let adapter: Arc<dyn MetricAdapter> = match server.adapter_type {
         AdapterType::GoAgent => Arc::new(GoAgentAdapter::new()),
@@ -194,13 +194,13 @@ fn labels_json(metric: &RawMetric) -> AppResult<String> {
     Ok(serde_json::to_string(&ordered)?)
 }
 
-async fn store_metrics<R: Runtime>(
+async fn store_metrics(
     pool: &SqlitePool,
     server_id: &str,
     metrics: Vec<RawMetric>,
     derived_engine: &mut DerivedMetricsEngine,
     alert_engine: &Arc<Mutex<AlertEngine>>,
-    notifier: &AlertNotifier<R>,
+    notifier: &AlertNotifier,
 ) -> AppResult<()> {
     let mut series = HashSet::new();
     let mut time_range = (i64::MAX, i64::MIN);
@@ -230,15 +230,19 @@ async fn store_metrics<R: Runtime>(
         for (key, value) in &metric_values {
             let events = engine.evaluate(key, *value);
             for event in &events {
-                if let Err(e) = persist_alert_event(pool, event).await {
-                    log::error!("Failed to persist alert event: {e}");
-                }
-                let notify_result = match event.status {
-                    AlertStatus::Firing => notifier.send_alert(event),
-                    AlertStatus::Resolved => notifier.send_recovery(event),
+                let delivery_report = match event.status {
+                    AlertStatus::Firing => notifier.send_alert(event).await,
+                    AlertStatus::Resolved => notifier.send_recovery(event).await,
                 };
-                if let Err(e) = notify_result {
-                    log::error!("Failed to send alert notification: {e}");
+
+                let mut event_to_persist = event.clone();
+                match delivery_report.to_delivery_status_json() {
+                    Ok(status_json) => event_to_persist.delivery_status = Some(status_json),
+                    Err(e) => log::error!("Failed to encode alert delivery status: {e}"),
+                }
+
+                if let Err(e) = persist_alert_event(pool, &event_to_persist).await {
+                    log::error!("Failed to persist alert event: {e}");
                 }
             }
         }

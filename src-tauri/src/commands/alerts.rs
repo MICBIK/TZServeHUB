@@ -130,7 +130,7 @@ pub async fn list_alert_events(
 
         let rows = if let Some(sid) = server_id {
             sqlx::query(
-                "SELECT id, rule_id, server_id, status, message, fired_at, resolved_at FROM alert_events WHERE server_id = ? ORDER BY fired_at DESC LIMIT ?",
+                "SELECT id, rule_id, server_id, status, message, fired_at, resolved_at, delivery_status FROM alert_events WHERE server_id = ? ORDER BY fired_at DESC LIMIT ?",
             )
             .bind(sid)
             .bind(limit)
@@ -138,7 +138,7 @@ pub async fn list_alert_events(
             .await?
         } else {
             sqlx::query(
-                "SELECT id, rule_id, server_id, status, message, fired_at, resolved_at FROM alert_events ORDER BY fired_at DESC LIMIT ?",
+                "SELECT id, rule_id, server_id, status, message, fired_at, resolved_at, delivery_status FROM alert_events ORDER BY fired_at DESC LIMIT ?",
             )
             .bind(limit)
             .fetch_all(pool.inner())
@@ -155,7 +155,7 @@ pub async fn list_alert_events(
                 message: row.get("message"),
                 fired_at: row.get("fired_at"),
                 resolved_at: row.get("resolved_at"),
-                delivery_status: None,
+                delivery_status: row.get("delivery_status"),
             })
             .collect())
     }
@@ -186,7 +186,7 @@ pub async fn load_rules_into_engine(
 /// Persist an alert event to the database.
 pub async fn persist_alert_event(pool: &SqlitePool, event: &AlertEvent) -> AppResult<()> {
     sqlx::query(
-        "INSERT INTO alert_events (id, rule_id, server_id, status, message, fired_at, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO alert_events (id, rule_id, server_id, status, message, fired_at, resolved_at, delivery_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&event.id)
     .bind(&event.rule_id)
@@ -195,6 +195,7 @@ pub async fn persist_alert_event(pool: &SqlitePool, event: &AlertEvent) -> AppRe
     .bind(&event.message)
     .bind(event.fired_at)
     .bind(event.resolved_at)
+    .bind(&event.delivery_status)
     .execute(pool)
     .await?;
     Ok(())

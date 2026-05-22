@@ -1,10 +1,9 @@
 use crate::alerts::channels::{desktop::DesktopChannel, NotificationChannel};
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::models::alert::AlertEvent;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, Runtime};
-use tauri_plugin_notification::NotificationExt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChannelDeliveryStatus {
@@ -30,86 +29,96 @@ enum DeliveryKind {
     Recovery,
 }
 
-pub struct AlertNotifier<R: Runtime> {
-    app: Option<AppHandle<R>>,
+impl DeliveryKind {
+    fn label(self) -> &'static str {
+        match self {
+            DeliveryKind::Alert => "alert",
+            DeliveryKind::Recovery => "recovery",
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct AlertNotifier {
     channels: Vec<Arc<dyn NotificationChannel>>,
 }
 
-impl<R: Runtime> AlertNotifier<R> {
-    pub fn new(app: AppHandle<R>) -> Self {
+impl AlertNotifier {
+    pub fn new<R: Runtime>(app: AppHandle<R>) -> Self {
         Self {
-            channels: vec![Arc::new(DesktopChannel::from_app(app.clone()))],
-            app: Some(app),
+            channels: vec![Arc::new(DesktopChannel::from_app(app))],
         }
     }
 
-    pub async fn dispatch_alert(&self, event: &AlertEvent) -> NotificationDeliveryReport {
+    pub fn with_channels(channels: Vec<Arc<dyn NotificationChannel>>) -> Self {
+        Self { channels }
+    }
+
+    pub async fn send_alert(&self, event: &AlertEvent) -> NotificationDeliveryReport {
         self.dispatch(event, DeliveryKind::Alert).await
     }
 
-    pub async fn dispatch_recovery(&self, event: &AlertEvent) -> NotificationDeliveryReport {
+    pub async fn send_recovery(&self, event: &AlertEvent) -> NotificationDeliveryReport {
         self.dispatch(event, DeliveryKind::Recovery).await
     }
 
-    pub fn send_alert(&self, event: &AlertEvent) -> AppResult<()> {
-        self.app
-            .as_ref()
-            .ok_or_else(|| AppError::Custom("desktop app handle is not available".to_string()))?
-            .notification()
-            .builder()
-            .title("ServerHUB Alert")
-            .body(&event.message)
-            .show()
-            .map_err(|e| crate::error::AppError::Notification(e.to_string()))?;
-        Ok(())
-    }
-
-    pub fn send_recovery(&self, event: &AlertEvent) -> AppResult<()> {
-        self.app
-            .as_ref()
-            .ok_or_else(|| AppError::Custom("desktop app handle is not available".to_string()))?
-            .notification()
-            .builder()
-            .title("ServerHUB Recovery")
-            .body(&event.message)
-            .show()
-            .map_err(|e| crate::error::AppError::Notification(e.to_string()))?;
-        Ok(())
-    }
-
     async fn dispatch(&self, event: &AlertEvent, kind: DeliveryKind) -> NotificationDeliveryReport {
-        let mut report = NotificationDeliveryReport::default();
-        if let Some(channel) = self.channels.first() {
-            let channel_name = channel.name().to_string();
-            let result = match kind {
-                DeliveryKind::Alert => channel.send_alert(event).await,
-                DeliveryKind::Recovery => channel.send_recovery(event).await,
-            };
-            report.channels.push(ChannelDeliveryStatus {
-                channel: channel_name,
-                success: result.is_ok(),
-                error: result.err().map(|e| e.to_string()),
+        let mut tasks = tokio::task::JoinSet::new();
+
+        for (index, channel) in self.channels.iter().cloned().enumerate() {
+            let event = event.clone();
+            tasks.spawn(async move {
+                let channel_name = channel.name().to_string();
+                let result = match kind {
+                    DeliveryKind::Alert => channel.send_alert(&event).await,
+                    DeliveryKind::Recovery => channel.send_recovery(&event).await,
+                };
+                let status = ChannelDeliveryStatus {
+                    channel: channel_name,
+                    success: result.is_ok(),
+                    error: result.err().map(|e| e.to_string()),
+                };
+                (index, status)
             });
         }
-        report
-    }
-}
 
-impl<R: Runtime> Clone for AlertNotifier<R> {
-    fn clone(&self) -> Self {
-        Self {
-            app: self.app.clone(),
-            channels: self.channels.clone(),
+        let mut indexed_statuses = Vec::with_capacity(self.channels.len());
+        while let Some(join_result) = tasks.join_next().await {
+            match join_result {
+                Ok((index, status)) => {
+                    if !status.success {
+                        log::error!(
+                            "Notification channel '{}' failed during {} delivery: {}",
+                            status.channel,
+                            kind.label(),
+                            status.error.as_deref().unwrap_or("unknown error")
+                        );
+                    }
+                    indexed_statuses.push((index, status));
+                }
+                Err(e) => {
+                    log::error!(
+                        "Notification channel task failed during {} delivery: {e}",
+                        kind.label()
+                    );
+                    indexed_statuses.push((
+                        usize::MAX,
+                        ChannelDeliveryStatus {
+                            channel: "unknown".to_string(),
+                            success: false,
+                            error: Some(e.to_string()),
+                        },
+                    ));
+                }
+            }
         }
-    }
-}
 
-#[cfg(test)]
-impl AlertNotifier<tauri::test::MockRuntime> {
-    fn with_channels(channels: Vec<Arc<dyn NotificationChannel>>) -> Self {
-        Self {
-            app: None,
-            channels,
+        indexed_statuses.sort_by_key(|(index, _)| *index);
+        NotificationDeliveryReport {
+            channels: indexed_statuses
+                .into_iter()
+                .map(|(_, status)| status)
+                .collect(),
         }
     }
 }
@@ -208,7 +217,7 @@ mod tests {
         ]);
 
         let report = notifier
-            .dispatch_alert(&sample_event(AlertStatus::Firing))
+            .send_alert(&sample_event(AlertStatus::Firing))
             .await;
 
         assert_eq!(desktop_calls.load(Ordering::SeqCst), 1);
@@ -228,7 +237,7 @@ mod tests {
         ]);
 
         let report = notifier
-            .dispatch_alert(&sample_event(AlertStatus::Firing))
+            .send_alert(&sample_event(AlertStatus::Firing))
             .await;
 
         assert_eq!(failing_calls.load(Ordering::SeqCst), 1);
@@ -253,7 +262,7 @@ mod tests {
         ]);
 
         let mut event = sample_event(AlertStatus::Firing);
-        let report = notifier.dispatch_alert(&event).await;
+        let report = notifier.send_alert(&event).await;
         event.delivery_status = Some(
             report
                 .to_delivery_status_json()
