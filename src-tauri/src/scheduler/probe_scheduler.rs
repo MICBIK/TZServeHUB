@@ -130,22 +130,20 @@ async fn run_probes(pool: &SqlitePool, server: &ServerConfig) {
                 log::error!("Failed to create PingProbe for {}: {e}", server.name);
             }
         }
-    } else {
-        if let Err(e) = store_probe_result(
-            pool,
-            &server.id,
-            "ping",
-            host,
-            false,
-            None,
-            None,
-            Some("Failed to resolve host"),
-            now,
-        )
-        .await
-        {
-            log::error!("Failed to store ping resolve error for {}: {e}", server.name);
-        }
+    } else if let Err(e) = store_probe_result(
+        pool,
+        &server.id,
+        "ping",
+        host,
+        false,
+        None,
+        None,
+        Some("Failed to resolve host"),
+        now,
+    )
+    .await
+    {
+        log::error!("Failed to store ping resolve error for {}: {e}", server.name);
     }
 
     // Run TCP probe
@@ -193,25 +191,23 @@ async fn run_probes(pool: &SqlitePool, server: &ServerConfig) {
                 }
             }
         }
-    } else {
-        if let Err(e) = store_probe_result(
-            pool,
-            &server.id,
-            "tcp",
-            &tcp_target,
-            false,
-            None,
-            None,
-            Some("Failed to resolve host"),
-            now,
-        )
-        .await
-        {
-            log::error!(
-                "Failed to store TCP resolve error for {}: {e}",
-                server.name
-            );
-        }
+    } else if let Err(e) = store_probe_result(
+        pool,
+        &server.id,
+        "tcp",
+        &tcp_target,
+        false,
+        None,
+        None,
+        Some("Failed to resolve host"),
+        now,
+    )
+    .await
+    {
+        log::error!(
+            "Failed to store TCP resolve error for {}: {e}",
+            server.name
+        );
     }
 
     // Run DNS probe only for hostnames (not IPs)

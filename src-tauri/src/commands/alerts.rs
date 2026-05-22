@@ -37,6 +37,7 @@ pub async fn list_alert_rules(pool: State<'_, SqlitePool>) -> Result<Vec<AlertRu
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn add_alert_rule(
     pool: State<'_, SqlitePool>,
     engine: State<'_, Arc<Mutex<AlertEngine>>>,

@@ -51,6 +51,7 @@ pub async fn list_servers(pool: State<'_, SqlitePool>) -> Result<Vec<ServerConfi
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn add_server(
     pool: State<'_, SqlitePool>,
     name: String,
@@ -184,7 +185,7 @@ pub async fn get_server_health_summary(
         for row in &rows {
             let status: String = row.get("status");
             let last_seen_at: Option<i64> = row.get("last_seen_at");
-            let polling_interval_sec = row.get::<i64, _>("polling_interval_sec") as i64;
+            let polling_interval_sec = row.get::<i64, _>("polling_interval_sec");
 
             match status.as_str() {
                 "online" => {
