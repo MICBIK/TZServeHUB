@@ -2,17 +2,19 @@
 
 ## Current Focus
 
-**一键部署 + Dashboard UI 升级**
+**v0.2 Phase 2 — Notifier Trait 重构**
 
-- 用 SSH（密钥 / 账密）连接目标 VPS，自动完成 Go agent 部署：上传二进制 → 渲染 systemd unit → 启动 → 健康检查
-- 配套 UI：`DeployModal`、`ServerDetail`、`ActivityRings`、`MetricGrid`、`DiskBar`、`MemoryBar`
-- 目标：从「加服务器」按钮点下去到看到第一条 metrics 流入 ≤ 30 秒，全程零手动 shell
+- Phase 1 安全收口已完成：identifier/CSP、known_hosts、SecretStore/keychain、明文凭证迁移、Settings keychain hint
+- 自动化 gate 已复验：`pnpm check:all`、`pnpm test`、`cargo clippy --all-targets -- -D warnings`、`go vet ./...`
+- Tauri dev webview 已启动验证：DevTools/console 无 CSP violation
+- 下一步：按 `.claude/sdd/v0_2/plan.md` 进入 Cycle 2.1 `NOTIF-001`
 
 ## Milestones
 
 - [x] **v0.0** 初版（commit `2002c5d`）：仓库脚手架
 - [x] **v0.1.0** 监控管道基础（commit `e149418`）：alerts + probes + fleet health + 三层 retention + adapter 抽象
 - [x] **项目初始化**：memory-bank + SDD 工作流落地（`/init-project` 执行完成）
+- [x] **v0.2 Phase 1 安全收口**：CSP / known_hosts / SecretStore + Migration / KEY-010 UI hint，阶段 gate 通过
 - [ ] **一键部署完成度**：`deployer/` 模块 + `DeployModal` 走完所有错误分支（鉴权失败 / 端口占用 / systemd 不可用 / arch 不支持）
 - [ ] **Dashboard UI 升级**：`rings/` + `detail/` 全套组件设计审查通过（走 `/design-review` 或 `/plan-design-review`）
 - [ ] **v0.1.x 收尾**：把当前 untracked 与 modified 的改动按 SDD 微循环节奏分批落 commit
@@ -22,9 +24,8 @@
 
 | 项 | 影响 | 优先级 |
 |---|------|--------|
-| Tauri identifier 还是 `com.tauri.dev` | 发布前必须改正式 ID，否则签名/通知会出问题 | 高（发版前） |
-| `tauri.conf.json` CSP `null` | 生产构建需补 nonce-based CSP | 中 |
-| SQLite 凭证（SSH key / agent token）未加密 | 数据目录被读即泄露 | 中 |
+| Tauri 2 mock IPC `list_servers` smoke test ignored | `mock_builder()` 下报 `Plugin not found`；当前已注释并 `#[ignore]`，需后续单独诊断 | 中 |
+| Phase 2+ 通道/agent/remote probe 能力未落地 | v0.2 后续阶段仍需按 SDD micro-cycle 推进 | 高 |
 | `demo_seeder` 在 debug 模式自动 seed | 调试时易污染数据；需开关化 | 低 |
 | `lib.rs` setup 用 `block_on` 同步初始化 | 应用启动 I/O 阻塞，多 server 时启动变慢 | 低 |
 
@@ -45,7 +46,6 @@ ha1den 明确：当前主线是「完善功能 + UI 优化」，**v0.2 具体内
 
 ### 其他待回答
 
-- 桌面端凭证加密方案选什么？（Keychain / OS-specific secret store / 自实现 AES-GCM）
 - agent 自动升级机制是否纳入 v0.2？
 - 是否需要把 `docs/openspec-ui-redesign.md` / `docs/servercat-design-analysis.md` 的设计意图正式抽出来变成 design tokens？
 
