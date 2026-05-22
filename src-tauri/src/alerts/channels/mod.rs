@@ -1,3 +1,5 @@
+pub mod desktop;
+
 use crate::error::AppResult;
 use crate::models::alert::AlertEvent;
 
