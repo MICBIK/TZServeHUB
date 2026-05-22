@@ -26,7 +26,10 @@ async fn migration_009_creates_notification_channels_table() {
         .fetch_all(&pool)
         .await
         .expect("PRAGMA table_info should succeed");
-    let cols: Vec<String> = rows.iter().map(|row| row.get::<String, _>("name")).collect();
+    let cols: Vec<String> = rows
+        .iter()
+        .map(|row| row.get::<String, _>("name"))
+        .collect();
 
     for required in [
         "id",

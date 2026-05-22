@@ -1,10 +1,18 @@
-use crate::error::AppResult;
-use crate::models::alert::AlertEvent;
-use crate::storage::secrets::SecretStore;
+use crate::alerts::notifier::AlertNotifier;
+use crate::error::{AppError, AppResult};
+use crate::models::alert::{AlertEvent, AlertStatus};
+use crate::storage::{
+    database::resolve_app_data_dir,
+    secrets::{
+        factory::{SecretStoreFactory, SecretStoreFactoryConfig},
+        SecretStore,
+    },
+};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::SqlitePool;
+use sqlx::{Row, SqlitePool};
+use tauri::{AppHandle, Runtime, State};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -22,6 +30,18 @@ impl NotificationChannelKind {
             Self::Webhook => "webhook",
             Self::Email => "email",
             Self::Telegram => "telegram",
+        }
+    }
+
+    pub fn from_db(value: &str) -> AppResult<Self> {
+        match value {
+            "desktop" => Ok(Self::Desktop),
+            "webhook" => Ok(Self::Webhook),
+            "email" => Ok(Self::Email),
+            "telegram" => Ok(Self::Telegram),
+            _ => Err(AppError::Custom(format!(
+                "Unknown notification channel kind: {value}"
+            ))),
         }
     }
 }
@@ -47,65 +67,383 @@ pub trait NotificationChannelTestDispatcher: Send + Sync {
     ) -> AppResult<()>;
 }
 
+pub struct TauriNotificationChannelTestDispatcher<R: Runtime> {
+    app: AppHandle<R>,
+}
+
+impl<R: Runtime> TauriNotificationChannelTestDispatcher<R> {
+    fn new(app: AppHandle<R>) -> Self {
+        Self { app }
+    }
+}
+
+#[async_trait]
+impl<R: Runtime> NotificationChannelTestDispatcher for TauriNotificationChannelTestDispatcher<R> {
+    async fn test_channel(
+        &self,
+        channel: &NotificationChannelConfig,
+        event: &AlertEvent,
+    ) -> AppResult<()> {
+        match channel.kind {
+            NotificationChannelKind::Desktop => {
+                let report = AlertNotifier::new(self.app.clone()).send_alert(event).await;
+                if let Some(failure) = report.channels.iter().find(|status| !status.success) {
+                    return Err(AppError::Notification(
+                        failure
+                            .error
+                            .clone()
+                            .unwrap_or_else(|| "desktop notification failed".to_string()),
+                    ));
+                }
+                Ok(())
+            }
+            _ => Err(AppError::Custom(format!(
+                "{} notification channel testing is not implemented yet",
+                channel.kind.as_str()
+            ))),
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn list_notification_channels(
+    pool: State<'_, SqlitePool>,
+) -> Result<Vec<NotificationChannelConfig>, String> {
+    list_notification_channels_from_pool(pool.inner())
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn add_notification_channel(
+    pool: State<'_, SqlitePool>,
+    kind: NotificationChannelKind,
+    name: String,
+    config: Value,
+) -> Result<NotificationChannelConfig, String> {
+    let result: AppResult<NotificationChannelConfig> = async {
+        let created_store = SecretStoreFactory::create(SecretStoreFactoryConfig::new(
+            "serverhub",
+            resolve_app_data_dir()?,
+        ))
+        .await?;
+
+        add_notification_channel_with_store(
+            pool.inner(),
+            created_store.store().as_ref(),
+            kind,
+            name,
+            config,
+        )
+        .await
+    }
+    .await;
+
+    result.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn remove_notification_channel(
+    pool: State<'_, SqlitePool>,
+    id: String,
+) -> Result<(), String> {
+    let result: AppResult<()> = async {
+        let created_store = SecretStoreFactory::create(SecretStoreFactoryConfig::new(
+            "serverhub",
+            resolve_app_data_dir()?,
+        ))
+        .await?;
+        remove_notification_channel_with_store(pool.inner(), created_store.store().as_ref(), &id)
+            .await
+    }
+    .await;
+
+    result.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn update_notification_channel(
+    pool: State<'_, SqlitePool>,
+    id: String,
+    name: String,
+    enabled: bool,
+    config: Value,
+) -> Result<NotificationChannelConfig, String> {
+    let result: AppResult<NotificationChannelConfig> = async {
+        let created_store = SecretStoreFactory::create(SecretStoreFactoryConfig::new(
+            "serverhub",
+            resolve_app_data_dir()?,
+        ))
+        .await?;
+        update_notification_channel_with_store(
+            pool.inner(),
+            created_store.store().as_ref(),
+            &id,
+            name,
+            enabled,
+            config,
+        )
+        .await
+    }
+    .await;
+
+    result.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn test_notification_channel<R: Runtime>(
+    pool: State<'_, SqlitePool>,
+    app: AppHandle<R>,
+    id: String,
+) -> Result<(), String> {
+    let dispatcher = TauriNotificationChannelTestDispatcher::new(app);
+    test_notification_channel_with_dispatcher(pool.inner(), &dispatcher, &id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 pub async fn list_notification_channels_from_pool(
-    _pool: &SqlitePool,
+    pool: &SqlitePool,
 ) -> AppResult<Vec<NotificationChannelConfig>> {
-    Ok(Vec::new())
+    let rows = sqlx::query(
+        r#"
+        SELECT id, kind, name, enabled, config_json, secret_ref, created_at, updated_at
+        FROM notification_channels
+        ORDER BY updated_at DESC, name ASC
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    rows.iter().map(row_to_notification_channel).collect()
 }
 
 pub async fn add_notification_channel_with_store(
-    _pool: &SqlitePool,
-    _store: &dyn SecretStore,
+    pool: &SqlitePool,
+    store: &dyn SecretStore,
     kind: NotificationChannelKind,
     name: String,
-    config_json: Value,
+    mut config_json: Value,
 ) -> AppResult<NotificationChannelConfig> {
+    let name = normalize_name(name)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp();
+    let secret_ref = persist_channel_secret(store, &id, kind, &mut config_json).await?;
+    let config_string = serde_json::to_string(&config_json)?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO notification_channels
+            (id, kind, name, enabled, config_json, secret_ref, created_at, updated_at)
+        VALUES (?, ?, ?, 1, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(kind.as_str())
+    .bind(&name)
+    .bind(config_string)
+    .bind(&secret_ref)
+    .bind(now)
+    .bind(now)
+    .execute(pool)
+    .await?;
+
     Ok(NotificationChannelConfig {
-        id: "red-placeholder".to_string(),
+        id,
         kind,
         name,
         enabled: true,
         config_json,
-        secret_ref: None,
-        created_at: 0,
-        updated_at: 0,
+        secret_ref,
+        created_at: now,
+        updated_at: now,
     })
 }
 
 pub async fn remove_notification_channel_with_store(
-    _pool: &SqlitePool,
-    _store: &dyn SecretStore,
-    _id: &str,
+    pool: &SqlitePool,
+    store: &dyn SecretStore,
+    id: &str,
 ) -> AppResult<()> {
+    let id = normalize_id(id)?;
+    if let Some(secret_ref) = notification_channel_secret_ref(pool, &id).await? {
+        store.delete(&secret_ref).await?;
+    }
+
+    sqlx::query("DELETE FROM notification_channels WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+
     Ok(())
 }
 
 pub async fn update_notification_channel_with_store(
-    _pool: &SqlitePool,
-    _store: &dyn SecretStore,
-    _id: &str,
-    _name: String,
-    _enabled: bool,
-    _config_json: Value,
+    pool: &SqlitePool,
+    store: &dyn SecretStore,
+    id: &str,
+    name: String,
+    enabled: bool,
+    mut config_json: Value,
 ) -> AppResult<NotificationChannelConfig> {
+    let id = normalize_id(id)?;
+    let name = normalize_name(name)?;
+    let existing = get_notification_channel_from_pool(pool, &id).await?;
+    let new_secret_ref =
+        persist_channel_secret(store, &id, existing.kind, &mut config_json).await?;
+    let secret_ref = new_secret_ref.or(existing.secret_ref);
+    let now = chrono::Utc::now().timestamp();
+    let config_string = serde_json::to_string(&config_json)?;
+
+    sqlx::query(
+        r#"
+        UPDATE notification_channels
+        SET name = ?, enabled = ?, config_json = ?, secret_ref = ?, updated_at = ?
+        WHERE id = ?
+        "#,
+    )
+    .bind(&name)
+    .bind(if enabled { 1_i64 } else { 0_i64 })
+    .bind(config_string)
+    .bind(&secret_ref)
+    .bind(now)
+    .bind(&id)
+    .execute(pool)
+    .await?;
+
     Ok(NotificationChannelConfig {
-        id: "red-placeholder".to_string(),
-        kind: NotificationChannelKind::Desktop,
-        name: "red".to_string(),
-        enabled: true,
-        config_json: serde_json::json!({}),
-        secret_ref: None,
-        created_at: 0,
-        updated_at: 0,
+        id,
+        name,
+        enabled,
+        config_json,
+        secret_ref,
+        updated_at: now,
+        ..existing
     })
 }
 
 pub async fn test_notification_channel_with_dispatcher(
-    _pool: &SqlitePool,
-    _dispatcher: &dyn NotificationChannelTestDispatcher,
-    _id: &str,
+    pool: &SqlitePool,
+    dispatcher: &dyn NotificationChannelTestDispatcher,
+    id: &str,
 ) -> AppResult<()> {
-    Ok(())
+    let channel = get_notification_channel_from_pool(pool, id).await?;
+    let event = AlertEvent {
+        id: uuid::Uuid::new_v4().to_string(),
+        rule_id: "notification-channel-test".to_string(),
+        server_id: channel.id.clone(),
+        status: AlertStatus::Firing,
+        message: "ServerHUB test notification".to_string(),
+        fired_at: chrono::Utc::now().timestamp(),
+        resolved_at: None,
+        delivery_status: None,
+    };
+
+    dispatcher.test_channel(&channel, &event).await
+}
+
+async fn get_notification_channel_from_pool(
+    pool: &SqlitePool,
+    id: &str,
+) -> AppResult<NotificationChannelConfig> {
+    let id = normalize_id(id)?;
+    let row = sqlx::query(
+        r#"
+        SELECT id, kind, name, enabled, config_json, secret_ref, created_at, updated_at
+        FROM notification_channels
+        WHERE id = ?
+        "#,
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::Custom("Notification channel not found".to_string()))?;
+
+    row_to_notification_channel(&row)
+}
+
+fn row_to_notification_channel(
+    row: &sqlx::sqlite::SqliteRow,
+) -> AppResult<NotificationChannelConfig> {
+    let config_json: String = row.get("config_json");
+    Ok(NotificationChannelConfig {
+        id: row.get("id"),
+        kind: NotificationChannelKind::from_db(&row.get::<String, _>("kind"))?,
+        name: row.get("name"),
+        enabled: row.get::<i64, _>("enabled") != 0,
+        config_json: serde_json::from_str(&config_json)?,
+        secret_ref: row.get("secret_ref"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+async fn notification_channel_secret_ref(pool: &SqlitePool, id: &str) -> AppResult<Option<String>> {
+    let secret_ref =
+        sqlx::query_scalar("SELECT secret_ref FROM notification_channels WHERE id = ?")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(secret_ref.flatten())
+}
+
+async fn persist_channel_secret(
+    store: &dyn SecretStore,
+    id: &str,
+    kind: NotificationChannelKind,
+    config_json: &mut Value,
+) -> AppResult<Option<String>> {
+    let Some(secret) = extract_secret(kind, config_json) else {
+        return Ok(None);
+    };
+
+    let key = secret_key_for_channel(id);
+    store.put(&key, &secret).await?;
+    Ok(Some(key))
+}
+
+fn extract_secret(kind: NotificationChannelKind, config_json: &mut Value) -> Option<String> {
+    let object = config_json.as_object_mut()?;
+    let keys: &[&str] = match kind {
+        NotificationChannelKind::Desktop => &[],
+        NotificationChannelKind::Webhook => &["secret", "webhook_secret"],
+        NotificationChannelKind::Email => &["smtp_password", "password"],
+        NotificationChannelKind::Telegram => &["bot_token"],
+    };
+
+    for key in keys {
+        if let Some(value) = object.remove(*key) {
+            if let Some(secret) = value.as_str().map(str::trim).filter(|s| !s.is_empty()) {
+                return Some(secret.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+fn secret_key_for_channel(id: &str) -> String {
+    format!("serverhub.notification_channel.{id}.secret")
+}
+
+fn normalize_name(name: String) -> AppResult<String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(AppError::Custom(
+            "Notification channel name cannot be empty".to_string(),
+        ));
+    }
+    Ok(name)
+}
+
+fn normalize_id(id: &str) -> AppResult<String> {
+    let id = id.trim().to_string();
+    if id.is_empty() {
+        return Err(AppError::Custom(
+            "Notification channel ID cannot be empty".to_string(),
+        ));
+    }
+    Ok(id)
 }
 
 #[cfg(test)]
@@ -295,7 +633,10 @@ mod tests {
         let pool = test_pool().await;
         let store = MemorySecretStore::default();
         store
-            .put("serverhub.notification_channel.chan-1.secret", "secret-value")
+            .put(
+                "serverhub.notification_channel.chan-1.secret",
+                "secret-value",
+            )
             .await
             .expect("seed secret");
         insert_channel(

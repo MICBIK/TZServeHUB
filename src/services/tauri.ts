@@ -121,6 +121,19 @@ export interface KnownHost {
   last_seen: number;
 }
 
+export type NotificationChannelKind = 'desktop' | 'webhook' | 'email' | 'telegram';
+
+export interface NotificationChannelConfig {
+  id: string;
+  kind: NotificationChannelKind;
+  name: string;
+  enabled: boolean;
+  config_json: unknown;
+  secret_ref: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
 export async function getSettings(): Promise<AppSettings> {
   if (!hasTauriInvoke()) {
     return demoGetSettings();
@@ -307,4 +320,47 @@ export async function listAlertEvents(
     serverId: serverId ?? null,
     limit: limit ?? null,
   });
+}
+
+// Notification channel commands
+export async function listNotificationChannels(): Promise<NotificationChannelConfig[]> {
+  if (!hasTauriInvoke()) {
+    return [];
+  }
+
+  return invoke('list_notification_channels');
+}
+
+export async function addNotificationChannel(input: {
+  kind: NotificationChannelKind;
+  name: string;
+  config: unknown;
+}): Promise<NotificationChannelConfig> {
+  return invoke('add_notification_channel', {
+    kind: input.kind,
+    name: input.name,
+    config: input.config,
+  });
+}
+
+export async function removeNotificationChannel(id: string): Promise<void> {
+  return invoke('remove_notification_channel', { id });
+}
+
+export async function updateNotificationChannel(input: {
+  id: string;
+  name: string;
+  enabled: boolean;
+  config: unknown;
+}): Promise<NotificationChannelConfig> {
+  return invoke('update_notification_channel', {
+    id: input.id,
+    name: input.name,
+    enabled: input.enabled,
+    config: input.config,
+  });
+}
+
+export async function testNotificationChannel(id: string): Promise<void> {
+  return invoke('test_notification_channel', { id });
 }
