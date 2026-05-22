@@ -1,7 +1,20 @@
+use crate::error::AppResult;
+use crate::models::alert::AlertEvent;
+
+#[async_trait::async_trait]
+#[allow(dead_code)]
+pub trait NotificationChannel: Send + Sync {
+    fn name(&self) -> &str;
+    async fn send_alert(&self, event: &AlertEvent) -> AppResult<()>;
+    async fn send_recovery(&self, event: &AlertEvent) -> AppResult<()>;
+}
+
 #[cfg(test)]
 mod tests {
     use crate::error::AppResult;
     use crate::models::alert::{AlertEvent, AlertStatus};
+
+    use super::NotificationChannel;
 
     struct RecordingChannel;
 
