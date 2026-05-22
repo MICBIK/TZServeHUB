@@ -1,0 +1,89 @@
+#!/usr/bin/env sh
+# ServerHUB TDD commit-msg hook
+# 规则：
+#   1) feat: commit 前 5 个 commit 必须有同 scope 的 test:
+#   2) [no-tdd] 标签仅在 staged 改动只涉及白名单文件时放行（防伪造逃生口）
+# 白名单：纯样式 (*.css/*.scss/*.sass/*.less/*.postcss)、文档 (*.md/*.mdx/*.txt/*.rst)
+
+new_msg=$(cat "$1" 2>/dev/null || cat .git/COMMIT_EDITMSG 2>/dev/null || echo "")
+
+# 1) 空消息或 merge/revert 等特殊提交放行
+if [ -z "$new_msg" ]; then exit 0; fi
+case "$new_msg" in
+  "Merge "*|"Revert "*|"fixup!"*|"squash!"*) exit 0;;
+esac
+
+# 2) [no-tdd] 标签：白名单文件级二次验证
+if echo "$new_msg" | grep -q '\[no-tdd\]'; then
+  staged_files=$(git diff --cached --name-only 2>/dev/null)
+
+  if [ -z "$staged_files" ]; then
+    echo "✓ [no-tdd] 标签放行（无 staged 文件）"
+    exit 0
+  fi
+
+  violating_files=""
+  while IFS= read -r f; do
+    case "$f" in
+      *.css|*.scss|*.sass|*.less|*.postcss) ;;
+      *.md|*.mdx|*.txt|*.rst) ;;
+      "")  ;;
+      *)
+        violating_files="${violating_files}    ${f}
+"
+        ;;
+    esac
+  done <<EOF
+$staged_files
+EOF
+
+  if [ -n "$violating_files" ]; then
+    echo "✘ [no-tdd] 滥用：staged 文件含非样式/文档文件"
+    echo ""
+    echo "  违规文件："
+    printf "%s" "$violating_files"
+    echo ""
+    echo "  [no-tdd] 仅限白名单：*.css/*.scss/*.sass/*.less/*.md/*.mdx/*.txt/*.rst"
+    echo ""
+    echo "  补救方案："
+    echo "    1) 移除 [no-tdd] 标签，按 TDD 节奏先写 test(<scope>): 再写 feat(<scope>):"
+    echo "    2) 若确实是混合提交，拆成两个 commit：样式/文档独立 + TDD 微循环"
+    exit 1
+  fi
+
+  echo "✓ [no-tdd] 通过白名单文件校验"
+  exit 0
+fi
+
+# 3) 非 feat: 不检查
+if ! echo "$new_msg" | grep -qE '^feat(\([^)]*\))?:'; then
+  exit 0
+fi
+
+# 4) feat: 提取 scope
+scope=$(echo "$new_msg" | sed -nE 's/^feat\(([^)]+)\):.*/\1/p')
+
+# 5) feat 无 scope → 拒绝
+if [ -z "$scope" ]; then
+  echo "✘ TDD 违规：feat: 必须带 scope，如 feat(<module>): xxx"
+  echo "  补救：1) 改 commit message 加 scope"
+  echo "       2) 或加 [no-tdd] 标签（仅 css/scss/md 等白名单文件）"
+  exit 1
+fi
+
+# 6) 检查前 5 个 commit 是否有同 scope 的 test:
+if ! git log -5 --format=%s 2>/dev/null | grep -qE "^test\(${scope}\):"; then
+  echo "✘ TDD 违规：feat(${scope}) 提交前 5 个 commit 中无 test(${scope}):"
+  echo ""
+  echo "  最近 5 个 commit："
+  git log -5 --format='    %h %s' 2>/dev/null
+  echo ""
+  echo "  补救方案："
+  echo "    1) 先 git commit -m 'test(${scope}): <spec-id>' 提交对应测试"
+  echo "    2) 再重试本次 feat 提交"
+  echo "    3) 或本次提交加 [no-tdd] 标签（仅限 css/scss/md 白名单）"
+  exit 1
+fi
+
+echo "✓ TDD 节奏检查通过：feat(${scope}) 前有对应 test(${scope})"
+exit 0

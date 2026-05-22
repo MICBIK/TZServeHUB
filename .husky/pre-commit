@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# ServerHUB pre-commit hook
+# 轻量级：只跑 lint。深度校验用 `pnpm check:all` 手动跑。
+
+pnpm lint
