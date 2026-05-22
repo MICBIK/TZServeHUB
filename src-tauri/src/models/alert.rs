@@ -49,6 +49,8 @@ pub struct AlertEvent {
     pub message: String,
     pub fired_at: i64,
     pub resolved_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

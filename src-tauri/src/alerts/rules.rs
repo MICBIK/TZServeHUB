@@ -63,6 +63,7 @@ impl AlertEngine {
                         message: format!("{metric_key} breached threshold with value {value}"),
                         fired_at: now,
                         resolved_at: None,
+                        delivery_status: None,
                     });
                 }
             } else if self.firing_state.remove(&rule.id).is_some() {
@@ -74,6 +75,7 @@ impl AlertEngine {
                     message: format!("{metric_key} recovered with value {value}"),
                     fired_at: now,
                     resolved_at: Some(now),
+                    delivery_status: None,
                 });
             }
         }

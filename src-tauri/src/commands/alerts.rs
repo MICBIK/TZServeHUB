@@ -155,6 +155,7 @@ pub async fn list_alert_events(
                 message: row.get("message"),
                 fired_at: row.get("fired_at"),
                 resolved_at: row.get("resolved_at"),
+                delivery_status: None,
             })
             .collect())
     }

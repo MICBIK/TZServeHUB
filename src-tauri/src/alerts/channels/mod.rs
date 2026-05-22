@@ -44,6 +44,7 @@ mod tests {
             message: "CPU high".to_string(),
             fired_at: 1_700_000_000,
             resolved_at: None,
+            delivery_status: None,
         }
     }
 
