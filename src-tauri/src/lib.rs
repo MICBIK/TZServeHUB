@@ -1,10 +1,10 @@
 mod adapters;
-mod alerts;
+pub mod alerts;
 mod commands;
 pub mod deployer;
-mod error;
+pub mod error;
 mod metrics;
-mod models;
+pub mod models;
 mod probes;
 mod scheduler;
 pub mod storage;
