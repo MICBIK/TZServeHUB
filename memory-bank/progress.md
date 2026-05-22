@@ -7,7 +7,7 @@
 - Phase 1 安全收口已完成：identifier/CSP、known_hosts、SecretStore/keychain、明文凭证迁移、Settings keychain hint
 - 自动化 gate 已复验：`pnpm check:all`、`pnpm test`、`cargo clippy --all-targets -- -D warnings`、`go vet ./...`
 - Tauri dev webview 已启动验证：DevTools/console 无 CSP violation
-- 下一步：按 `.claude/sdd/v0_2/plan.md` 进入 Cycle 2.1 `NOTIF-001`
+- Cycle 2.1 `NOTIF-001` 已完成，下一步进入 Cycle 2.2 `NOTIF-002`
 
 ## Milestones
 
@@ -15,6 +15,7 @@
 - [x] **v0.1.0** 监控管道基础（commit `e149418`）：alerts + probes + fleet health + 三层 retention + adapter 抽象
 - [x] **项目初始化**：memory-bank + SDD 工作流落地（`/init-project` 执行完成）
 - [x] **v0.2 Phase 1 安全收口**：CSP / known_hosts / SecretStore + Migration / KEY-010 UI hint，阶段 gate 通过
+- [x] **v0.2 Phase 2 Cycle 2.1**：`NotificationChannel` trait 抽象完成
 - [ ] **一键部署完成度**：`deployer/` 模块 + `DeployModal` 走完所有错误分支（鉴权失败 / 端口占用 / systemd 不可用 / arch 不支持）
 - [ ] **Dashboard UI 升级**：`rings/` + `detail/` 全套组件设计审查通过（走 `/design-review` 或 `/plan-design-review`）
 - [ ] **v0.1.x 收尾**：把当前 untracked 与 modified 的改动按 SDD 微循环节奏分批落 commit
