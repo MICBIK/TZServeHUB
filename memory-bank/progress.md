@@ -2,12 +2,13 @@
 
 ## Current Focus
 
-**v0.2 Phase 2 — Notifier Trait 重构**
+**v0.2 Phase 3 — 三通道实现**
 
 - Phase 1 安全收口已完成：identifier/CSP、known_hosts、SecretStore/keychain、明文凭证迁移、Settings keychain hint
 - 自动化 gate 已复验：`pnpm check:all`、`pnpm test`、`cargo clippy --all-targets -- -D warnings`、`go vet ./...`
 - Tauri dev webview 已启动验证：DevTools/console 无 CSP violation
-- Cycle 2.1 `NOTIF-001`、Cycle 2.2 `NOTIF-002`、Cycle 2.3 `NOTIF-007,014` 已完成，下一步进入 Cycle 2.4 `NOTIF-008,009,010`
+- Phase 2 Notifier Trait 重构已完成：channel trait、DesktopChannel 回归、AlertNotifier fan-out、notification_channels persistence + IPC
+- 下一步进入 Phase 3 Cycle 3.1 `NOTIF-003,004`：WebhookChannel raw/slack + HMAC
 
 ## Milestones
 
@@ -18,6 +19,8 @@
 - [x] **v0.2 Phase 2 Cycle 2.1**：`NotificationChannel` trait 抽象完成
 - [x] **v0.2 Phase 2 Cycle 2.2**：`DesktopChannel` 与 v0.1 desktop notification 行为回归完成
 - [x] **v0.2 Phase 2 Cycle 2.3**：`AlertNotifier` fan-out router + per-channel `delivery_status` 持久化完成
+- [x] **v0.2 Phase 2 Cycle 2.4**：`notification_channels` migration + list/add/remove/update/test IPC 完成
+- [x] **v0.2 Phase 2 完成**：Notifier trait/router/storage/IPC 底座完成，阶段 gate 通过
 - [ ] **一键部署完成度**：`deployer/` 模块 + `DeployModal` 走完所有错误分支（鉴权失败 / 端口占用 / systemd 不可用 / arch 不支持）
 - [ ] **Dashboard UI 升级**：`rings/` + `detail/` 全套组件设计审查通过（走 `/design-review` 或 `/plan-design-review`）
 - [ ] **v0.1.x 收尾**：把当前 untracked 与 modified 的改动按 SDD 微循环节奏分批落 commit

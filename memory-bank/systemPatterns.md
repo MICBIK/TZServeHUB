@@ -87,6 +87,16 @@ pub trait MetricAdapter: Send + Sync {
 - **冷却**：两次告警最小间隔，防 flapping
 - **通知**：tauri-plugin-notification（桌面原生通知中心）
 
+## 5.1 Notification Channel 路由
+
+**位置**：`src-tauri/src/alerts/channels/` + `src-tauri/src/alerts/notifier.rs` + `src-tauri/src/commands/channels.rs`
+
+- `NotificationChannel` 是 async trait，所有通道实现必须 `Send + Sync`
+- `AlertNotifier` 持有 `Vec<Arc<dyn NotificationChannel>>`，发送时 fan-out，单通道失败只写入该 channel 的 delivery status，不阻断其他通道
+- `notification_channels` 表只保存非敏感 `config_json`；webhook secret / SMTP password / bot token 等敏感值写入 `SecretStore`，SQLite 只保存 `secret_ref`
+- IPC 命令统一走 `src-tauri/src/commands/channels.rs`，前端只通过 `src/services/tauri.ts` typed wrapper 调用
+- `test_notification_channel` 必须构造固定 mock event：`status = firing`，`message = "ServerHUB test notification"`
+
 ## 6. Tauri IPC 模式（前后端通信）
 
 - **Rust 侧**：所有 handler 必须在 `src-tauri/src/lib.rs` 的 `invoke_handler!` 宏里显式注册，否则前端调不到
